@@ -1,113 +1,272 @@
 //// Copied from [Anastasia-Labs/aiken-design-patterns](https://github.com/Anastasia-Labs/aiken-design-patterns/blob/main/lib/aiken-design-patterns/utils.ak)
 //// with a few additions that might be useful.
 
+use aiken/collection
 use aiken/collection/list
 use aiken/crypto.{Blake2b_224, DataHash, Hash, ScriptHash, VerificationKeyHash}
 use aiken/fuzz
+use aiken/stdlib/cardano/address/credential
+use aiken/stdlib/cardano/certificate/d_rep
+use aiken/stdlib/cardano/governance/voter
+use aiken/stdlib/cardano/transaction/datum
 use cardano/address.{Address, VerificationKey}
 use cardano/assets.{AssetName, PolicyId}
-use cardano/transaction.{
-  DatumHash, InlineDatum, NoDatum, OutputReference, TransactionId,
+use cardano/certificate.{
+  DelegateBlockProduction, DelegateBoth, DelegateRepresentative, DelegateVote,
+  StakePoolId,
 }
+use cardano/governance.{GovernanceActionId}
+use cardano/transaction.{OutputReference, TransactionId}
 use cardano/transaction/output_reference
 
-// ## Address Fuzzers
-
-pub type AddressCredentialHash {
+/// Alias: [`StakePoolHash`](#StakePoolHash)
+pub type CredentialHash {
   Specified(Hash<Blake2b_224, ByteArray>)
   Fuzzed
 }
 
-pub type AddressFrom {
-  FromScript(AddressCredentialHash)
-  FromKey(AddressCredentialHash)
+/// Used by:
+/// - [`address_fuzzer`](#address_fuzzer) to determine the payment part of a generated address
+/// - [`credential_fuzzer`](#credential_fuzzer) to determine the possible generated credential type
+/// - [`delegate_representative_fuzzer`](#delegate_representative_fuzzer) to determine the possible generated registered dRep credential type
+pub type FromCredential {
+  /// Payment part from script with known or any credential hash.
+  /// Usage examples,
+  /// ```aiken
+  /// address_fuzzer(FromScript(Specified("KNOWN_SCRIPT_HASH")), staking_part)
+  /// address_fuzzer(FromScript(Fuzzed), staking_part)
+  /// ```
+  /// See [`WithDelegation`](#WithDelegation) for more info on how to set the rule for the staking part.
+  FromScript(CredentialHash)
+
+  /// Payment part from key with known or any credential hash.
+  /// Usage examples,
+  /// ```aiken
+  /// address_fuzzer(FromKey(Specified("KNOWN_KEY_HASH")), staking_part)
+  /// address_fuzzer(FromKey(Fuzzed), staking_part)
+  /// ```
+  /// See [`WithDelegation`](#WithDelegation) for more info on how to set the rule for the staking part.
+  FromKey(CredentialHash)
+
+  /// Payment part from script or key with `Fuzzed` `CredentialHash`.
+  /// Usage example,
+  /// ```aiken
+  /// address_fuzzer(FromFuzzed, staking_part)
+  /// ```
+  /// See [`WithDelegation`](#WithDelegation) for more info on how to set the rule for the staking part.
+  FromFuzzed
 }
 
-pub type AddressWithDelegation {
+/// Used by [`address_fuzzer`](#address_fuzzer) to determine the staking part of a generated address.
+pub type WithDelegation {
+  /// Address generator with no staking part:
+  /// ```aiken
+  /// address_fuzzer(payment_part, WithNoDelegation)
+  /// ```
+  /// See [`FromCredential`](#FromCredential) for more info on how to set the rule for the payment part.
   WithNoDelegation
-  WithDelegationScript(AddressCredentialHash)
-  WithDelegationKey(AddressCredentialHash)
+
+  /// Address generator with staking part from script with known or any credential hash:
+  /// ```aiken
+  /// address_fuzzer(payment_part, WithDelegationScript(Specified("KNOWN_SCRIPT_HASH")))
+  /// address_fuzzer(payment_part, WithDelegationScript(Fuzzed))
+  /// ```
+  /// See [`FromCredential`](#FromCredential) for more info on how to set the rule for the payment part.
+  WithDelegationScript(CredentialHash)
+
+  /// Address generator with staking part from key with known or any credential hash:
+  /// ```aiken
+  /// address_fuzzer(payment_part, WithDelegationKey(Specified("KNOWN_KEY_HASH")))
+  /// address_fuzzer(payment_part, WithDelegationKey(Fuzzed))
+  /// ```
+  /// See [`FromCredential`](#FromCredential) for more info on how to set the rule for the payment part.
+  WithDelegationKey(CredentialHash)
+
+  /// Address generator with staking part with the same credential as the payment part:
+  /// ```aiken
+  /// address_fuzzer(payment_part, WithTheSameDelegationScriptOrKey)
+  /// ```
+  ///
+  /// Useful for generating multi-purpose validator addresses, because:
+  /// - If the address payment credential is `Script`(`"CURRENT_SCRIPT_HASH"`), then `WithTheSameDelegationScriptOrKey`
+  ///   will generate an address with delegation script hash `"CURRENT_SCRIPT_HASH"`
+  /// - If the address payment credential is `VerificationKey`(`"CURRENT_SCRIPT_HASH"`), then `WithTheSameDelegationScriptOrKey`
+  ///   will generate an address with delegation key hash `"CURRENT_SCRIPT_HASH"`
+  ///
+  /// ```aiken
+  /// test multi_purpose_validator_addresses(multi_purpose_validator_address via address_fuzzer(FromScript(Fuzzed), WithTheSameDelegationScriptOrKey)) {
+  ///   multi_purpose_validator_address |> cbor.diagnostic |> fuzz.label
+  /// }
+  /// ```
+  ///
+  /// See [`FromCredential`](#FromCredential) for more info on how to set the rule for the payment part.
   WithTheSameDelegationScriptOrKey
+
+  /// Address generator with either `NoDelegation` | `Fuzzed` `DelegationScript` | `Fuzzed` `DelegationKey` | `TheSameDelegationScriptOrKey`
+  /// staking part:
+  /// ```aiken
+  /// address_fuzzer(payment_part, WithFuzzedDelegation)
+  /// ```
+  /// See [`FromCredential`](#FromCredential) for more info on how to set the rule for the payment part.
+  WithFuzzedDelegation
 }
 
-/// Fuzzes an address.
+// Certificate Fuzzer Types
+
+pub type StakePoolHash =
+  CredentialHash
+
+/// Used by [`delegate_fuzzer`](#delegate_fuzzer) to determine the dRep type when the generated
+/// [`Delegate`](https://aiken-lang.github.io/stdlib/cardano/certificate.html#Delegate) is either:
+/// - `DelegateVote`([`DelegateRepresentative`](https://aiken-lang.github.io/stdlib/cardano/certificate.html#DelegateRepresentative))
+/// - `DelegateBoth`([`StakePoolId`](https://aiken-lang.github.io/stdlib/cardano/certificate.html#StakePoolId),
+///   [`DelegateRepresentative`](https://aiken-lang.github.io/stdlib/cardano/certificate.html#DelegateRepresentative))
+pub type VoteDelegateRepresentative {
+  VoteRegistered(FromCredential)
+  VoteAlwaysAbstain
+  VoteAlwaysNoConfidence
+  VoteFuzzed
+}
+
+// ## Address Fuzzers
+
+/// Fuzzes an address. See [`FromCredential`](#FromCredential) and [`WithDelegation`](#WithDelegation)
+/// for more information and usage examples.
 pub fn address_fuzzer(
-  from: AddressFrom,
-  with_delegation: AddressWithDelegation,
+  from: FromCredential,
+  with_delegation: WithDelegation,
 ) -> Fuzzer<Address> {
-  let p =
-    when from is {
-      FromScript(hash) ->
-        when hash is {
-          Specified(script_hash) ->
-            address.from_script(script_hash) |> fuzz.constant
-          Fuzzed -> {
-            let script_hash <- fuzz.map(script_hash_fuzzer())
-            address.from_script(script_hash)
-          }
+  let address_fuzzer_from_script =
+    fn(script: CredentialHash) {
+      when script is {
+        Specified(script_hash) ->
+          address.from_script(script_hash) |> fuzz.constant
+        Fuzzed -> {
+          let script_hash <- fuzz.map(script_hash_fuzzer())
+          address.from_script(script_hash)
         }
-      FromKey(hash) ->
-        when hash is {
-          Specified(verification_key_hash) ->
-            address.from_verification_key(verification_key_hash)
-              |> fuzz.constant
-          Fuzzed -> {
-            let verification_key_hash <-
-              fuzz.map(verification_key_hash_fuzzer())
-            address.from_verification_key(verification_key_hash)
-          }
-        }
+      }
     }
-  when with_delegation is {
-    WithNoDelegation -> p
-    WithDelegationScript(hash) ->
-      when hash is {
+  let address_fuzzer_from_key =
+    fn(key: CredentialHash) {
+      when key is {
+        Specified(verification_key_hash) ->
+          address.from_verification_key(verification_key_hash)
+            |> fuzz.constant
+        Fuzzed -> {
+          let verification_key_hash <- fuzz.map(verification_key_hash_fuzzer())
+          address.from_verification_key(verification_key_hash)
+        }
+      }
+    }
+
+  let address_fuzzer_with_delegation_script =
+    fn(address_fuzzer: Fuzzer<Address>, delegation_script: CredentialHash) {
+      when delegation_script is {
         Specified(s) -> {
-          let p <- fuzz.map(p)
+          let p <- fuzz.map(address_fuzzer)
           p |> address.with_delegation_script(s)
         }
         Fuzzed -> {
-          let p, s <- fuzz.map2(p, script_hash_fuzzer())
+          let p, s <- fuzz.map2(address_fuzzer, script_hash_fuzzer())
           p |> address.with_delegation_script(s)
         }
       }
-    WithDelegationKey(hash) ->
-      when hash is {
+    }
+  let address_fuzzer_with_delegation_key =
+    fn(address_fuzzer: Fuzzer<Address>, delegation_key: CredentialHash) {
+      when delegation_key is {
         Specified(s) -> {
-          let p <- fuzz.map(p)
+          let p <- fuzz.map(address_fuzzer)
           p |> address.with_delegation_key(s)
         }
         Fuzzed -> {
-          let p, s <- fuzz.map2(p, verification_key_hash_fuzzer())
+          let p, s <- fuzz.map2(address_fuzzer, verification_key_hash_fuzzer())
           p |> address.with_delegation_key(s)
         }
       }
-    WithTheSameDelegationScriptOrKey -> {
-      let p <- fuzz.map(p)
+    }
+  let address_fuzzer_with_the_same_delegation_script_or_key =
+    fn(address_fuzzer: Fuzzer<Address>) {
+      let p <- fuzz.map(address_fuzzer)
       when p.payment_credential is {
         address.Script(s) -> p |> address.with_delegation_script(s)
         VerificationKey(s) -> p |> address.with_delegation_key(s)
       }
     }
+
+  let p =
+    when from is {
+      FromScript(credential_hash) -> address_fuzzer_from_script(credential_hash)
+      FromKey(credential_hash) -> address_fuzzer_from_key(credential_hash)
+      FromFuzzed ->
+        fuzz.either(
+          Fuzzed |> address_fuzzer_from_script,
+          Fuzzed |> address_fuzzer_from_key,
+        )
+    }
+  when with_delegation is {
+    WithNoDelegation -> p
+    WithDelegationScript(credential_hash) ->
+      p |> address_fuzzer_with_delegation_script(credential_hash)
+    WithDelegationKey(credential_hash) ->
+      p |> address_fuzzer_with_delegation_key(credential_hash)
+    WithTheSameDelegationScriptOrKey ->
+      p |> address_fuzzer_with_the_same_delegation_script_or_key()
+    WithFuzzedDelegation ->
+      fuzz.either4(
+        p,
+        p |> address_fuzzer_with_delegation_script(Fuzzed),
+        p |> address_fuzzer_with_delegation_key(Fuzzed),
+        p |> address_fuzzer_with_the_same_delegation_script_or_key(),
+      )
   }
 }
 
-/// Fuzzes either `Script(script_hash)` | `VerificationKey(verification_key_hash)`
-///
-/// Where,
-/// - `script_hash` `<-` [`script_hash_fuzzer`](#script_hash_fuzzer)`()`
-/// - `verification_key_hash` `<-` [`verification_key_hash_fuzzer`](#verification_key_hash_fuzzer)`()`
-pub fn credential_fuzzer() -> Fuzzer<address.Credential> {
-  fuzz.either(
-    {
-      let script_hash <- fuzz.map(script_hash_fuzzer())
-      address.Script(script_hash)
-    },
-    {
-      let verification_key_hash <- fuzz.map(verification_key_hash_fuzzer())
-      VerificationKey(verification_key_hash)
-    },
-  )
+/// Fuzzes either `Script` or `VerificationKey` credentials determined by [`FromCredential`](#FromCredential)
+/// ```aiken
+/// credential_fuzzer(FromScript(Fuzzed))
+/// credential_fuzzer(FromKey(Fuzzed))
+/// credential_fuzzer(FromFuzzed)
+/// ```
+/// `FromScript` and `FromKey` with `Specified` [`CredentialHash`](#CredentialHash) are also supported
+/// but most of the time there's no reason to use a fuzzer for a known credential type and hash.
+pub fn credential_fuzzer(from: FromCredential) -> Fuzzer<address.Credential> {
+  when from is {
+    FromScript(credential) -> {
+      let script_hash <-
+        fuzz.map(
+          when credential is {
+            Specified(hash) -> hash |> fuzz.constant
+            Fuzzed -> script_hash_fuzzer()
+          },
+        )
+      script_hash |> credential.to_script
+    }
+
+    FromKey(credential) -> {
+      let verification_key_hash <-
+        fuzz.map(
+          when credential is {
+            Specified(hash) -> hash |> fuzz.constant
+            Fuzzed -> verification_key_hash_fuzzer()
+          },
+        )
+      verification_key_hash |> credential.to_verification_key
+    }
+
+    FromFuzzed ->
+      fuzz.either(
+        {
+          let script_hash <- fuzz.map(script_hash_fuzzer())
+          script_hash |> credential.to_script
+        },
+        {
+          let verification_key_hash <- fuzz.map(verification_key_hash_fuzzer())
+          verification_key_hash |> credential.to_verification_key
+        },
+      )
+  }
 }
 
 /// Script Hash with 28 bytes fuzzer.
@@ -135,7 +294,7 @@ pub fn asset_name_fuzzer() -> Fuzzer<AssetName> {
 /// A `Value` fuzzer,
 /// guaranteed to include some amount of ADA (minimum must be specified)
 ///
-/// Fuzzes a minimum specified ADA and 0-10 tokens:
+/// Fuzzes a list of assets with some ADA with quantity of at least as the specified minimum amount, and 0-10 tokens:
 /// ```aiken
 /// assets.from_asset_list([
 ///   Pair("", [Pair("", lovelace_count)]),
@@ -147,7 +306,7 @@ pub fn asset_name_fuzzer() -> Fuzzer<AssetName> {
 /// - `lovelace_count` `<-` [`fuzz.int_at_least`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#int_at_least)`(min_lovelaces)`
 /// - `policy_id` `<-` [`policy_id_fuzzer`](#policy_id_fuzzer)`()`
 /// - `token_name` `<-` [`asset_name_fuzzer`](#asset_name_fuzzer)`()`
-/// - `quantiy` `<-` [`fuzz.int_at_least`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#int_at_least)`(1)`
+/// - `quantity` `<-` [`fuzz.int_at_least`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#int_at_least)`(1)`
 pub fn value_fuzzer(min_lovelaces: assets.Lovelace) -> Fuzzer<assets.Value> {
   let lovelace_count <- fuzz.and_then(fuzz.int_at_least(min_lovelaces))
   let lovelace_value = assets.from_lovelace(lovelace_count)
@@ -167,7 +326,7 @@ pub fn value_fuzzer(min_lovelaces: assets.Lovelace) -> Fuzzer<assets.Value> {
 /// Where,
 /// - `policy_id` `<-` [`policy_id_fuzzer`](#policy_id_fuzzer)`()`
 /// - `token_name` `<-` [`asset_name_fuzzer`](#asset_name_fuzzer)`()`
-/// - `quantiy` `<-` [`fuzz.int_at_least`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#int_at_least)`(1)`
+/// - `quantity` `<-` [`fuzz.int_at_least`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#int_at_least)`(1)`
 pub fn single_asset_value_fuzzer() -> Fuzzer<assets.Value> {
   let policy_id <- fuzz.and_then(policy_id_fuzzer())
   policy_id |> single_specific_asset_value_fuzzer
@@ -182,7 +341,7 @@ pub fn single_asset_value_fuzzer() -> Fuzzer<assets.Value> {
 /// ```
 /// Where,
 /// - `token_name` `<-` [`asset_name_fuzzer`](#asset_name_fuzzer)`()`
-/// - `quantiy` `<-` [`fuzz.int_at_least`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#int_at_least)`(1)`
+/// - `quantity` `<-` [`fuzz.int_at_least`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#int_at_least)`(1)`
 pub fn single_specific_asset_value_fuzzer(
   policy_id: PolicyId,
 ) -> Fuzzer<assets.Value> {
@@ -206,30 +365,209 @@ pub fn single_specific_asset_value_fuzzer(
 /// Where,
 /// - `policy_id` `<-` [`policy_id_fuzzer`](#policy_id_fuzzer)`()`
 /// - `token_name` `<-` [`asset_name_fuzzer`](#asset_name_fuzzer)`()`
-/// - `quantiy` `<-` [`fuzz.int_at_least`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#int_at_least)`(1)`
+/// - `quantity` `<-` [`fuzz.int_at_least`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#int_at_least)`(1)`
 pub fn mint_fuzzer() -> Fuzzer<assets.Value> {
   let other_assets_values <-
     fuzz.map(fuzz.list_between(single_asset_value_fuzzer(), 1, 10))
   other_assets_values |> list.foldl(assets.zero, assets.merge)
 }
 
+// ## Certificate Fuzzers
+
+/// Stake Pool ID with 28 bytes fuzzer.
+pub fn stake_pool_id_fuzzer() -> Fuzzer<StakePoolId> {
+  fuzz.bytearray_fixed(28)
+}
+
+/// Fuzzes either `Registered`([`FromCredential`](#FromCredential)) | `AlwaysAbstain` | `AlwaysNoConfidence`
+/// ```aiken
+/// // Fuzzes either:
+/// // - Registered("KNOWN_SCRIPT_HASH" |> Script)
+/// // - AlwaysAbstain
+/// // - AlwaysNoConfidence
+/// delegate_representative_fuzzer(when_registered: FromScript(Specified("KNOWN_SCRIPT_HASH")))
+/// 
+/// // Fuzzes either:
+/// // - Registered(Any Script)
+/// // - AlwaysAbstain
+/// // - AlwaysNoConfidence
+/// delegate_representative_fuzzer(when_registered: FromScript(Fuzzed))
+/// 
+/// // Fuzzes either:
+/// // - Registered("KNOWN_KEY_HASH" |> VerificationKey)
+/// // - AlwaysAbstain
+/// // - AlwaysNoConfidence
+/// delegate_representative_fuzzer(when_registered: FromKey(Specified("KNOWN_KEY_HASH")))
+/// 
+/// // Fuzzes either:
+/// // - Registered(Any VerificationKey)
+/// // - AlwaysAbstain
+/// // - AlwaysNoConfidence
+/// delegate_representative_fuzzer(when_registered: FromKey(Fuzzed))
+/// 
+/// // Fuzzes either:
+/// // - Registered(Any Script or Any VerificationKey)
+/// // - AlwaysAbstain
+/// // - AlwaysNoConfidence
+/// delegate_representative_fuzzer(when_registered: FromFuzzed)
+/// ```
+pub fn delegate_representative_fuzzer(
+  when_registered: FromCredential,
+) -> Fuzzer<DelegateRepresentative> {
+  fuzz.either3(
+    {
+      let credential <- fuzz.map(credential_fuzzer(when_registered))
+      credential |> d_rep.to_registered
+    },
+    d_rep.always_abstain |> fuzz.constant,
+    d_rep.always_no_confidence |> fuzz.constant,
+  )
+}
+
+/// Fuzzes either:
+/// - `DelegateBlockProduction`([`StakePoolHash`](#StakePoolHash))
+/// - `DelegateVote`([`VoteDelegateRepresentative`](#VoteDelegateRepresentative))
+/// - `DelegateBoth`([`StakePoolHash`](#StakePoolHash), [`VoteDelegateRepresentative`](#VoteDelegateRepresentative))
+pub fn delegate_fuzzer(
+  when_block_production: StakePoolHash,
+  when_vote: VoteDelegateRepresentative,
+  when_both: (StakePoolHash, VoteDelegateRepresentative),
+) -> Fuzzer<certificate.Delegate> {
+  let fuzz_block_production =
+    fn(block_production_stake_pool) {
+      let stake_pool_id <-
+        fuzz.map(
+          when block_production_stake_pool is {
+            Specified(stake_pool_id) -> stake_pool_id |> fuzz.constant
+            Fuzzed -> stake_pool_id_fuzzer()
+          },
+        )
+      DelegateBlockProduction(stake_pool_id)
+    }
+  let fuzz_vote =
+    fn(vote_delegate_representative) {
+      let delegate_representative <-
+        fuzz.map(
+          when vote_delegate_representative is {
+            VoteRegistered(when_registered) -> {
+              let credential <- fuzz.map(credential_fuzzer(when_registered))
+              credential |> d_rep.to_registered
+            }
+            VoteAlwaysAbstain -> fuzz.constant(d_rep.always_abstain)
+            VoteAlwaysNoConfidence -> fuzz.constant(d_rep.always_no_confidence)
+            VoteFuzzed -> {
+              let delegate_representative <-
+                fuzz.map(delegate_representative_fuzzer(FromFuzzed))
+              delegate_representative
+            }
+          },
+        )
+      DelegateVote(delegate_representative)
+    }
+  let fuzz_both =
+    fn((block_production_stake_pool, vote_delegate_representative)) {
+      expect DelegateBlockProduction(stake_pool) <-
+        fuzz.and_then(fuzz_block_production(block_production_stake_pool))
+      expect DelegateVote(delegate_representative) <-
+        fuzz.and_then(fuzz_vote(vote_delegate_representative))
+      DelegateBoth(stake_pool, delegate_representative) |> fuzz.constant
+    }
+
+  fuzz.either3(
+    when_block_production |> fuzz_block_production,
+    when_vote |> fuzz_vote,
+    when_both |> fuzz_both,
+  )
+}
+
+// ## Governance Fuzzers
+
+pub fn constitution_fuzzer(some_guardrails: CredentialHash) {
+  let guardrails <-
+    fuzz.map(
+      fuzz.option(
+        when some_guardrails is {
+          Specified(script_hash) -> script_hash |> fuzz.constant
+          Fuzzed -> script_hash_fuzzer()
+        },
+      ),
+    )
+  governance.Constitution(guardrails)
+}
+
+/// Governance Action ID fuzzer,
+/// Transaction ID with 32 bytes,
+/// and output index between 0 and 512.
+pub fn governance_action_id_fuzzer() -> Fuzzer<GovernanceActionId> {
+  let
+    transaction_id: TransactionId,
+    action_index: collection.Index,
+  <- fuzz.map2(transaction_id_fuzzer(), fuzz.int_between(0, 512))
+
+  GovernanceActionId(transaction_id, action_index)
+}
+
+pub fn vote_fuzzer() {
+  fuzz.either3(
+    governance.No |> fuzz.constant,
+    governance.Yes |> fuzz.constant,
+    governance.Abstain |> fuzz.constant,
+  )
+}
+
+pub fn voter_fuzzer(
+  when_constitutional_committee_member: FromCredential,
+  when_delegate_representative: FromCredential,
+  when_stake_pool: StakePoolHash,
+) {
+  let fuzz_constitutional_committee_member =
+    fn(constitutional_committee_member_credential) {
+      let credential <-
+        fuzz.map(credential_fuzzer(constitutional_committee_member_credential))
+      credential |> voter.to_constitutional_committee_member
+    }
+  let fuzz_delegate_representative =
+    fn(delegate_representative_credential) {
+      let credential <-
+        fuzz.map(credential_fuzzer(delegate_representative_credential))
+      credential |> voter.to_delegate_representative
+    }
+  let fuzz_stake_pool =
+    fn(stake_pool) {
+      let stake_pool_id <-
+        fuzz.map(
+          when stake_pool is {
+            Specified(stake_pool_id) -> stake_pool_id |> fuzz.constant
+            Fuzzed -> stake_pool_id_fuzzer()
+          },
+        )
+      stake_pool_id |> voter.to_stake_pool
+    }
+
+  fuzz.either3(
+    when_constitutional_committee_member |> fuzz_constitutional_committee_member,
+    when_delegate_representative |> fuzz_delegate_representative,
+    when_stake_pool |> fuzz_stake_pool,
+  )
+}
+
 // ## Transaction Fuzzers
 
-/// Fuzzes either `NoDatum` | `DatumHash(data_hash)` | `InlineDatum(data)`
+/// Fuzzes either `NoDatum` | `DatumHash`(`data_hash`) | `InlineDatum`(`data`)
 ///
 /// Where,
 /// - `data_hash` `<-` [`data_hash_fuzzer`](#data_hash_fuzzer)`()`
 /// - `data` `<-` [`data_fuzzer`](#data_fuzzer)`()`
 pub fn datum_fuzzer() -> Fuzzer<transaction.Datum> {
   fuzz.either3(
-    NoDatum |> fuzz.constant,
+    datum.no_datum |> fuzz.constant,
     {
       let data_hash <- fuzz.map(data_hash_fuzzer())
-      data_hash |> DatumHash
+      data_hash |> datum.to_datum_hash
     },
     {
       let data <- fuzz.map(data_fuzzer())
-      data |> InlineDatum
+      data |> datum.to_inline_datum
     },
   )
 }
@@ -281,7 +619,7 @@ pub fn data_fuzzer() -> Fuzzer<Data> {
 pub fn output_reference_fuzzer() -> Fuzzer<OutputReference> {
   let
     transaction_id: TransactionId,
-    output_index: Int,
+    output_index: collection.Index,
   <- fuzz.map2(transaction_id_fuzzer(), fuzz.int_between(0, 512))
 
   OutputReference(transaction_id, output_index)
@@ -316,7 +654,7 @@ pub fn user_output_fuzzer() -> Fuzzer<transaction.Output> {
       value_fuzzer(2_000_000),
     )
 
-  transaction.Output { address, value, datum: NoDatum, reference_script: None }
+  transaction.Output(address, value, datum.no_datum, None)
 }
 
 /// Simple (non-script) outputs fuzzer.
@@ -324,7 +662,7 @@ pub fn user_output_fuzzer() -> Fuzzer<transaction.Output> {
 /// Fuzzes a list between 1-10 elements of the following UTxO:
 /// ```aiken
 /// transaction.Output {
-///   address: Address(FromKey, WithDelegationKey),
+///   address: Address(Fuzzed |> FromKey, Fuzzed |> WithDelegationKey),
 ///   value: 2 or more ADA and 0-10 tokens/NFTs,
 ///   datum: NoDatum,
 ///   reference_script: None,
@@ -441,7 +779,7 @@ pub fn authentic_script_output_fuzzer(
 /// - `output` `<-` [`user_output_fuzzer`](#user_output_fuzzer)`()`
 ///   ```aiken
 ///   transaction.Output {
-///     address: Address(FromKey, WithDelegationKey),
+///     address: Address(Fuzzed |> FromKey, Fuzzed |> WithDelegationKey),
 ///     value: 2 or more ADA and 0-10 tokens/NFTs,
 ///     datum: NoDatum,
 ///     reference_script: None,
@@ -467,7 +805,7 @@ pub fn user_input_fuzzer() -> Fuzzer<transaction.Input> {
 /// - `output` `<-` [`user_output_fuzzer`](#user_output_fuzzer)`()`
 ///   ```aiken
 ///   transaction.Output {
-///     address: Address(FromKey, WithDelegationKey),
+///     address: Address(Fuzzed |> FromKey, Fuzzed |> WithDelegationKey),
 ///     value: 2 or more ADA and 0-10 tokens/NFTs,
 ///     datum: NoDatum,
 ///     reference_script: None,
@@ -613,7 +951,7 @@ pub fn authentic_script_input_fuzzer(
 ///     - `output` `<-` [`user_output_fuzzer`](#user_output_fuzzer)`()`
 ///       ```aiken
 ///       transaction.Output {
-///         address: Address(FromKey, WithDelegationKey),
+///         address: Address(Fuzzed |> FromKey, Fuzzed |> WithDelegationKey),
 ///         value: 2 or more ADA and 0-10 tokens/NFTs,
 ///         datum: NoDatum,
 ///         reference_script: None,
@@ -641,4 +979,147 @@ pub fn inputs_with_an_authentic_script_input_fuzzer(
   let sorted_inputs = [script_input, ..wallet_inputs] |> sort_inputs
 
   (script_hash, script_input, sorted_inputs)
+}
+
+// ## Tuple Fuzzers
+
+/// A convenient way of generating tuples instead of doing [`map2`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#map2)
+/// ```aiken
+/// fuzz.map2(
+///   fuzzer_a, fuzzer_b,
+///   fn(a, b) { (a, b) }
+/// )
+/// ```
+pub fn tuple(a: Fuzzer<a>, b: Fuzzer<b>) -> Fuzzer<(a, b)> {
+  let a, b <- fuzz.map2(a, b)
+  (a, b)
+}
+
+/// A convenient way of generating tuple3 instead of doing [`map3`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#map3)
+/// ```aiken
+/// fuzz.map3(
+///   fuzzer_a, fuzzer_b, fuzzer_c,
+///   fn(a, b, c) { (a, b, c) }
+/// )
+/// ```
+pub fn tuple3(a: Fuzzer<a>, b: Fuzzer<b>, c: Fuzzer<c>) -> Fuzzer<(a, b, c)> {
+  let a, b, c <- fuzz.map3(a, b, c)
+  (a, b, c)
+}
+
+/// A convenient way of generating tuple4 instead of doing [`map4`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#map4)
+/// ```aiken
+/// fuzz.map4(
+///   fuzzer_a, fuzzer_b, fuzzer_c, fuzzer_d,
+///   fn(a, b, c, d) { (a, b, c, d) }
+/// )
+/// ```
+pub fn tuple4(
+  a: Fuzzer<a>,
+  b: Fuzzer<b>,
+  c: Fuzzer<c>,
+  d: Fuzzer<d>,
+) -> Fuzzer<(a, b, c, d)> {
+  let a, b, c, d <- fuzz.map4(a, b, c, d)
+  (a, b, c, d)
+}
+
+/// A convenient way of generating tuple5 instead of doing [`map5`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#map5)
+/// ```aiken
+/// fuzz.map5(
+///   fuzzer_a, fuzzer_b, fuzzer_c, fuzzer_d, fuzzer_e,
+///   fn(a, b, c, d, e) { (a, b, c, d, e) }
+/// )
+/// ```
+pub fn tuple5(
+  a: Fuzzer<a>,
+  b: Fuzzer<b>,
+  c: Fuzzer<c>,
+  d: Fuzzer<d>,
+  e: Fuzzer<e>,
+) -> Fuzzer<(a, b, c, d, e)> {
+  let a, b, c, d, e <- fuzz.map5(a, b, c, d, e)
+  (a, b, c, d, e)
+}
+
+/// A convenient way of generating tuple6 instead of doing [`map6`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#map6)
+/// ```aiken
+/// fuzz.map6(
+///   fuzzer_a, fuzzer_b, fuzzer_c, fuzzer_d, fuzzer_e, fuzzer_f,
+///   fn(a, b, c, d, e, f) { (a, b, c, d, e, f) }
+/// )
+/// ```
+pub fn tuple6(
+  a: Fuzzer<a>,
+  b: Fuzzer<b>,
+  c: Fuzzer<c>,
+  d: Fuzzer<d>,
+  e: Fuzzer<e>,
+  f: Fuzzer<f>,
+) -> Fuzzer<(a, b, c, d, e, f)> {
+  let a, b, c, d, e, f <- fuzz.map6(a, b, c, d, e, f)
+  (a, b, c, d, e, f)
+}
+
+/// A convenient way of generating tuple7 instead of doing [`map7`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#map7)
+/// ```aiken
+/// fuzz.map7(
+///   fuzzer_a, fuzzer_b, fuzzer_c, fuzzer_d, fuzzer_e, fuzzer_f, fuzzer_g,
+///   fn(a, b, c, d, e, f, g) { (a, b, c, d, e, f, g) }
+/// )
+/// ```
+pub fn tuple7(
+  a: Fuzzer<a>,
+  b: Fuzzer<b>,
+  c: Fuzzer<c>,
+  d: Fuzzer<d>,
+  e: Fuzzer<e>,
+  f: Fuzzer<f>,
+  g: Fuzzer<g>,
+) -> Fuzzer<(a, b, c, d, e, f, g)> {
+  let a, b, c, d, e, f, g <- fuzz.map7(a, b, c, d, e, f, g)
+  (a, b, c, d, e, f, g)
+}
+
+/// A convenient way of generating tuple8 instead of doing [`map8`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#map8)
+/// ```aiken
+/// fuzz.map8(
+///   fuzzer_a, fuzzer_b, fuzzer_c, fuzzer_d, fuzzer_e, fuzzer_f, fuzzer_g, fuzzer_h,
+///   fn(a, b, c, d, e, f, g, h) { (a, b, c, d, e, f, g, h) }
+/// )
+/// ```
+pub fn tuple8(
+  a: Fuzzer<a>,
+  b: Fuzzer<b>,
+  c: Fuzzer<c>,
+  d: Fuzzer<d>,
+  e: Fuzzer<e>,
+  f: Fuzzer<f>,
+  g: Fuzzer<g>,
+  h: Fuzzer<h>,
+) -> Fuzzer<(a, b, c, d, e, f, g, h)> {
+  let a, b, c, d, e, f, g, h <- fuzz.map8(a, b, c, d, e, f, g, h)
+  (a, b, c, d, e, f, g, h)
+}
+
+/// A convenient way of generating tuple9 instead of doing [`map9`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#map9)
+/// ```aiken
+/// fuzz.map9(
+///   fuzzer_a, fuzzer_b, fuzzer_c, fuzzer_d, fuzzer_e, fuzzer_f, fuzzer_g, fuzzer_h, fuzzer_i,
+///   fn(a, b, c, d, e, f, g, h, i) { (a, b, c, d, e, f, g, h, i) }
+/// )
+/// ```
+pub fn tuple9(
+  a: Fuzzer<a>,
+  b: Fuzzer<b>,
+  c: Fuzzer<c>,
+  d: Fuzzer<d>,
+  e: Fuzzer<e>,
+  f: Fuzzer<f>,
+  g: Fuzzer<g>,
+  h: Fuzzer<h>,
+  i: Fuzzer<i>,
+) -> Fuzzer<(a, b, c, d, e, f, g, h, i)> {
+  let a, b, c, d, e, f, g, h, i <- fuzz.map9(a, b, c, d, e, f, g, h, i)
+  (a, b, c, d, e, f, g, h, i)
 }

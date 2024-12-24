@@ -1,20 +1,29 @@
 //// @hidden
 
-use aiken/builtin
 use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use aiken/fuzz
+use aiken/primitive/bytearray
 use cardano/address.{Address, VerificationKey}
 use cardano/assets
-use cardano/transaction
+use cardano/certificate.{
+  AlwaysAbstain, AlwaysNoConfidence, DelegateBlockProduction, DelegateBoth,
+  DelegateRepresentative, DelegateVote,
+}
+use cardano/transaction.{DatumHash, InlineDatum, NoDatum, OutputReference}
 use fuzz_util/fuzzer.{
-  FromKey, FromScript, Fuzzed, Specified, WithDelegationKey,
-  WithDelegationScript, WithNoDelegation, WithTheSameDelegationScriptOrKey,
-  address_fuzzer, datum_fuzzer, inputs_with_an_authentic_script_input_fuzzer,
-  mint_fuzzer, script_hash_fuzzer, script_input_fuzzer,
-  specific_script_input_fuzzer, user_outputs_fuzzer,
-  verification_key_hash_fuzzer,
+  FromFuzzed, FromKey, FromScript, Fuzzed, Specified, VoteFuzzed,
+  WithDelegationKey, WithDelegationScript, WithFuzzedDelegation,
+  WithNoDelegation, WithTheSameDelegationScriptOrKey, address_fuzzer,
+  authentic_script_input_fuzzer, authentic_script_output_fuzzer,
+  credential_fuzzer, data_fuzzer, datum_fuzzer, delegate_fuzzer,
+  delegate_representative_fuzzer, inputs_with_an_authentic_script_input_fuzzer,
+  mint_fuzzer, output_reference_fuzzer, script_hash_fuzzer, script_input_fuzzer,
+  script_output_fuzzer, specific_script_input_fuzzer,
+  specific_script_output_fuzzer, tuple, tuple3, tuple4, tuple5, tuple6, tuple7,
+  tuple8, tuple9, user_input_fuzzer, user_inputs_fuzzer, user_output_fuzzer,
+  user_outputs_fuzzer, value_fuzzer, verification_key_hash_fuzzer,
 }
 
 // ## Address Fuzzers
@@ -151,6 +160,50 @@ test testing_specified_script_address_with_the_same_delegation_script_fuzzer(
   )
 }
 
+fn test_specified_script_address_with_fuzzed_delegation_fuzzer() -> Fuzzer<
+  (ScriptHash, Address),
+> {
+  let payment_script_hash <- fuzz.and_then(script_hash_fuzzer())
+  let address <-
+    fuzz.map(
+      address_fuzzer(
+        FromScript(Specified(payment_script_hash)),
+        WithFuzzedDelegation,
+      ),
+    )
+  (payment_script_hash, address)
+}
+
+test testing_specified_script_address_with_fuzzed_delegation_fuzzer_distribution(
+  (payment_script_hash, address) via test_specified_script_address_with_fuzzed_delegation_fuzzer(),
+) {
+  fuzz.label(
+    when address.stake_credential is {
+      None ->
+        // 25%
+        @"NoDelegation"
+
+      Some(address.Inline(address.Script(stake_script_hash))) ->
+        if payment_script_hash == stake_script_hash {
+          // 25%
+          @"TheSameDelegationScript"
+        } else {
+          // 25%
+          @"DelegationScript"
+        }
+
+      Some(address.Inline(VerificationKey(_stake_key_hash))) ->
+        // 25%
+        @"DelegationKey"
+
+      Some(_) ->
+        // 0%
+        @"PointerDelegation"
+    },
+  )
+  address.payment_credential == address.Script(payment_script_hash)
+}
+
 // ### Specified Key Address Fuzzers
 
 fn test_specified_key_address_with_no_delegation_fuzzer() -> Fuzzer<
@@ -281,6 +334,47 @@ test testing_specified_key_address_with_the_same_delegation_key_fuzzer(
   )
 }
 
+fn test_specified_key_address_with_fuzzed_delegation_fuzzer() -> Fuzzer<
+  (VerificationKeyHash, Address),
+> {
+  let payment_key_hash <- fuzz.and_then(verification_key_hash_fuzzer())
+  let address <-
+    fuzz.map(
+      address_fuzzer(FromKey(Specified(payment_key_hash)), WithFuzzedDelegation),
+    )
+  (payment_key_hash, address)
+}
+
+test testing_specified_key_address_with_fuzzed_delegation_fuzzer_distribution(
+  (payment_key_hash, address) via test_specified_key_address_with_fuzzed_delegation_fuzzer(),
+) {
+  fuzz.label(
+    when address.stake_credential is {
+      None ->
+        // 25%
+        @"NoDelegation"
+
+      Some(address.Inline(address.Script(_stake_script_hash))) ->
+        // 25%
+        @"DelegationScript"
+
+      Some(address.Inline(VerificationKey(stake_key_hash))) ->
+        if payment_key_hash == stake_key_hash {
+          // 25%
+          @"TheSameDelegationKey"
+        } else {
+          // 25%
+          @"DelegationKey"
+        }
+
+      Some(_) ->
+        // 0%
+        @"PointerDelegation"
+    },
+  )
+  address.payment_credential == VerificationKey(payment_key_hash)
+}
+
 // ### Fuzzed Script Address Fuzzers
 
 test testing_fuzzed_script_address_with_no_delegation_fuzzer(
@@ -289,302 +383,1230 @@ test testing_fuzzed_script_address_with_no_delegation_fuzzer(
     WithNoDelegation,
   ),
 ) {
-  expect address.Script(payment_script_hash) = payment_credential
-  payment_script_hash |> builtin.decode_utf8 |> fuzz.label
+  expect address.Script(_payment_script_hash) = payment_credential
+  //   payment_script_hash |> cbor.diagnostic |> fuzz.label
   stake_credential == None
 }
 
-// fn test_specified_script_address_with_specified_delegation_script_fuzzer() -> Fuzzer<
-//   (ScriptHash, ScriptHash, Address),
-// > {
-//   let payment_script_hash <- fuzz.and_then(script_hash_fuzzer())
-//   let stake_script_hash <- fuzz.and_then(script_hash_fuzzer())
-//   let address <-
-//     fuzz.map(
-//       address_fuzzer(
-//         FromScript(Specified(payment_script_hash)),
-//         WithDelegationScript(Specified(stake_script_hash)),
-//       ),
-//     )
-//   (payment_script_hash, stake_script_hash, address)
-// }
+fn test_fuzzed_script_address_with_specified_delegation_script_fuzzer() -> Fuzzer<
+  (ScriptHash, Address),
+> {
+  let stake_script_hash <- fuzz.and_then(script_hash_fuzzer())
+  let address <-
+    fuzz.map(
+      address_fuzzer(
+        FromScript(Fuzzed),
+        WithDelegationScript(Specified(stake_script_hash)),
+      ),
+    )
+  (stake_script_hash, address)
+}
 
-// test testing_specified_script_address_with_specified_delegation_script_fuzzer(
-//   (payment_script_hash, stake_script_hash, address) via test_specified_script_address_with_specified_delegation_script_fuzzer(),
-// ) {
-//   address == (
-//     address.from_script(payment_script_hash)
-//       |> address.with_delegation_script(stake_script_hash)
-//   )
-// }
+test testing_fuzzed_script_address_with_specified_delegation_script_fuzzer(
+  (stake_script_hash, Address { payment_credential, stake_credential }) via test_fuzzed_script_address_with_specified_delegation_script_fuzzer(),
+) {
+  expect address.Script(_payment_script_hash) = payment_credential
+  //   payment_script_hash |> cbor.diagnostic |> fuzz.label
+  stake_credential == (
+    stake_script_hash |> address.Script |> address.Inline |> Some
+  )
+}
 
-// fn test_specified_script_address_with_fuzzed_delegation_script_fuzzer() -> Fuzzer<
-//   (ScriptHash, Address),
-// > {
-//   let payment_script_hash <- fuzz.and_then(script_hash_fuzzer())
-//   let address <-
-//     fuzz.map(
-//       address_fuzzer(
-//         FromScript(Specified(payment_script_hash)),
-//         WithDelegationScript(Fuzzed),
-//       ),
-//     )
-//   (payment_script_hash, address)
-// }
+test testing_fuzzed_script_address_with_fuzzed_delegation_script_fuzzer(
+  Address(payment_credential, stake_credential) via address_fuzzer(
+    FromScript(Fuzzed),
+    WithDelegationScript(Fuzzed),
+  ),
+) {
+  expect address.Script(_payment_script_hash) = payment_credential
+  expect Some(address.Inline(address.Script(_stake_script_hash))) =
+    stake_credential
+  //   (payment_script_hash, stake_script_hash) |> cbor.diagnostic |> fuzz.label
+}
 
-// test testing_specified_script_address_with_fuzzed_delegation_script_fuzzer(
-//   (payment_script_hash, address) via test_specified_script_address_with_fuzzed_delegation_script_fuzzer(),
-// ) {
-//   //   address.stake_credential |> cbor.diagnostic |> fuzz.label
-//   address.payment_credential == address.Script(payment_script_hash)
-// }
+fn test_fuzzed_script_address_with_specified_delegation_key_fuzzer() -> Fuzzer<
+  (VerificationKeyHash, Address),
+> {
+  let stake_key_hash <- fuzz.and_then(verification_key_hash_fuzzer())
+  let address <-
+    fuzz.map(
+      address_fuzzer(
+        FromScript(Fuzzed),
+        WithDelegationKey(Specified(stake_key_hash)),
+      ),
+    )
+  (stake_key_hash, address)
+}
 
-// fn test_specified_script_address_with_specified_delegation_key_fuzzer() -> Fuzzer<
-//   (ScriptHash, VerificationKeyHash, Address),
-// > {
-//   let payment_script_hash <- fuzz.and_then(script_hash_fuzzer())
-//   let stake_key_hash <- fuzz.and_then(verification_key_hash_fuzzer())
-//   let address <-
-//     fuzz.map(
-//       address_fuzzer(
-//         FromScript(Specified(payment_script_hash)),
-//         WithDelegationKey(Specified(stake_key_hash)),
-//       ),
-//     )
-//   (payment_script_hash, stake_key_hash, address)
-// }
+test testing_fuzzed_script_address_with_specified_delegation_key_fuzzer(
+  (stake_key_hash, Address { payment_credential, stake_credential }) via test_fuzzed_script_address_with_specified_delegation_key_fuzzer(),
+) {
+  expect address.Script(_payment_key_hash) = payment_credential
+  //   payment_key_hash |> cbor.diagnostic |> fuzz.label
+  stake_credential == (
+    stake_key_hash |> VerificationKey |> address.Inline |> Some
+  )
+}
 
-// test testing_specified_script_address_with_specified_delegation_key_fuzzer(
-//   (payment_script_hash, stake_key_hash, address) via test_specified_script_address_with_specified_delegation_key_fuzzer(),
-// ) {
-//   address == (
-//     address.from_script(payment_script_hash)
-//       |> address.with_delegation_key(stake_key_hash)
-//   )
-// }
+test testing_fuzzed_script_address_with_fuzzed_delegation_key_fuzzer(
+  Address(payment_credential, stake_credential) via address_fuzzer(
+    FromScript(Fuzzed),
+    WithDelegationKey(Fuzzed),
+  ),
+) {
+  expect address.Script(_payment_key_hash) = payment_credential
+  expect Some(address.Inline(VerificationKey(_stake_key_hash))) =
+    stake_credential
+  //   (payment_key_hash, stake_key_hash) |> cbor.diagnostic |> fuzz.label
+}
 
-// fn test_specified_script_address_with_fuzzed_delegation_key_fuzzer() -> Fuzzer<
-//   (ScriptHash, Address),
-// > {
-//   let payment_script_hash <- fuzz.and_then(script_hash_fuzzer())
-//   let address <-
-//     fuzz.map(
-//       address_fuzzer(
-//         FromScript(Specified(payment_script_hash)),
-//         WithDelegationKey(Fuzzed),
-//       ),
-//     )
-//   (payment_script_hash, address)
-// }
+test testing_fuzzed_script_address_with_the_same_delegation_script_fuzzer(
+  Address(payment_credential, stake_credential) via address_fuzzer(
+    FromScript(Fuzzed),
+    WithTheSameDelegationScriptOrKey,
+  ),
+) {
+  expect address.Script(_payment_script_hash) = payment_credential
+  expect Some(address.Inline(address.Script(_stake_script_hash))) =
+    stake_credential
+  //   (payment_script_hash, stake_script_hash) |> cbor.diagnostic |> fuzz.label
+}
 
-// test testing_specified_script_address_with_fuzzed_delegation_key_fuzzer(
-//   (payment_script_hash, address) via test_specified_script_address_with_fuzzed_delegation_key_fuzzer(),
-// ) {
-//   //   address.stake_credential |> cbor.diagnostic |> fuzz.label
-//   address.payment_credential == address.Script(payment_script_hash)
-// }
+test testing_fuzzed_script_address_with_fuzzed_delegation_fuzzer_distribution(
+  Address(payment_credential, stake_credential) via address_fuzzer(
+    FromScript(Fuzzed),
+    WithFuzzedDelegation,
+  ),
+) {
+  expect address.Script(payment_script_hash) = payment_credential
+  fuzz.label(
+    when stake_credential is {
+      None ->
+        // 25%
+        @"NoDelegation"
 
-// fn test_specified_script_address_with_the_same_delegation_script_fuzzer() -> Fuzzer<
-//   (ScriptHash, Address),
-// > {
-//   let payment_script_hash <- fuzz.and_then(script_hash_fuzzer())
-//   let address <-
-//     fuzz.map(
-//       address_fuzzer(
-//         FromScript(Specified(payment_script_hash)),
-//         WithTheSameDelegationScriptOrKey,
-//       ),
-//     )
-//   (payment_script_hash, address)
-// }
+      Some(address.Inline(address.Script(stake_script_hash))) ->
+        if payment_script_hash == stake_script_hash {
+          // 25%
+          @"TheSameDelegationScript"
+        } else {
+          // 25%
+          @"DelegationScript"
+        }
 
-// test testing_specified_script_address_with_the_same_delegation_script_fuzzer(
-//   (script_hash, address) via test_specified_script_address_with_the_same_delegation_script_fuzzer(),
-// ) {
-//   address == (
-//     address.from_script(script_hash)
-//       |> address.with_delegation_script(script_hash)
-//   )
-// }
+      Some(address.Inline(VerificationKey(_stake_key_hash))) ->
+        // 25%
+        @"DelegationKey"
 
-// // ### Specified Key Address Fuzzers
+      Some(_) ->
+        // 0%
+        @"PointerDelegation"
+    },
+  )
+}
 
-// fn test_specified_key_address_with_no_delegation_fuzzer() -> Fuzzer<
-//   (VerificationKeyHash, Address),
-// > {
-//   let key_hash <- fuzz.and_then(verification_key_hash_fuzzer())
-//   let address <-
-//     fuzz.map(address_fuzzer(FromKey(Specified(key_hash)), WithNoDelegation))
-//   (key_hash, address)
-// }
+// ### Fuzzed Key Address Fuzzers
 
-// test testing_specified_key_address_with_no_delegation_fuzzer(
-//   (key_hash, address) via test_specified_key_address_with_no_delegation_fuzzer(),
-// ) {
-//   address == address.from_verification_key(key_hash)
-// }
+test testing_fuzzed_key_address_with_no_delegation_fuzzer(
+  Address(payment_credential, stake_credential) via address_fuzzer(
+    FromKey(Fuzzed),
+    WithNoDelegation,
+  ),
+) {
+  expect VerificationKey(_payment_key_hash) = payment_credential
+  //   payment_key_hash |> cbor.diagnostic |> fuzz.label
+  stake_credential == None
+}
 
-// fn test_specified_key_address_with_specified_delegation_script_fuzzer() -> Fuzzer<
-//   (VerificationKeyHash, ScriptHash, Address),
-// > {
-//   let payment_key_hash <- fuzz.and_then(verification_key_hash_fuzzer())
-//   let stake_script_hash <- fuzz.and_then(script_hash_fuzzer())
-//   let address <-
-//     fuzz.map(
-//       address_fuzzer(
-//         FromKey(Specified(payment_key_hash)),
-//         WithDelegationScript(Specified(stake_script_hash)),
-//       ),
-//     )
-//   (payment_key_hash, stake_script_hash, address)
-// }
+fn test_fuzzed_key_address_with_specified_delegation_script_fuzzer() -> Fuzzer<
+  (ScriptHash, Address),
+> {
+  let stake_script_hash <- fuzz.and_then(script_hash_fuzzer())
+  let address <-
+    fuzz.map(
+      address_fuzzer(
+        FromKey(Fuzzed),
+        WithDelegationScript(Specified(stake_script_hash)),
+      ),
+    )
+  (stake_script_hash, address)
+}
 
-// test testing_specified_key_address_with_specified_delegation_script_fuzzer(
-//   (payment_key_hash, stake_script_hash, address) via test_specified_key_address_with_specified_delegation_script_fuzzer(),
-// ) {
-//   address == (
-//     address.from_verification_key(payment_key_hash)
-//       |> address.with_delegation_script(stake_script_hash)
-//   )
-// }
+test testing_fuzzed_key_address_with_specified_delegation_script_fuzzer(
+  (stake_script_hash, Address { payment_credential, stake_credential }) via test_fuzzed_key_address_with_specified_delegation_script_fuzzer(),
+) {
+  expect VerificationKey(_payment_key_hash) = payment_credential
+  //   payment_key_hash |> cbor.diagnostic |> fuzz.label
+  stake_credential == (
+    stake_script_hash |> address.Script |> address.Inline |> Some
+  )
+}
 
-// fn test_specified_key_address_with_fuzzed_delegation_script_fuzzer() -> Fuzzer<
-//   (VerificationKeyHash, Address),
-// > {
-//   let payment_key_hash <- fuzz.and_then(verification_key_hash_fuzzer())
-//   let address <-
-//     fuzz.map(
-//       address_fuzzer(
-//         FromKey(Specified(payment_key_hash)),
-//         WithDelegationScript(Fuzzed),
-//       ),
-//     )
-//   (payment_key_hash, address)
-// }
+test testing_fuzzed_key_address_with_fuzzed_delegation_script_fuzzer(
+  Address(payment_credential, stake_credential) via address_fuzzer(
+    FromKey(Fuzzed),
+    WithDelegationScript(Fuzzed),
+  ),
+) {
+  expect VerificationKey(_payment_key_hash) = payment_credential
+  expect Some(address.Inline(address.Script(_stake_script_hash))) =
+    stake_credential
+  //   (payment_key_hash, stake_script_hash) |> cbor.diagnostic |> fuzz.label
+}
 
-// test testing_specified_key_address_with_fuzzed_delegation_script_fuzzer(
-//   (payment_key_hash, address) via test_specified_key_address_with_fuzzed_delegation_script_fuzzer(),
-// ) {
-//   //   address.stake_credential |> cbor.diagnostic |> fuzz.label
-//   address.payment_credential == VerificationKey(payment_key_hash)
-// }
+fn test_fuzzed_key_address_with_specified_delegation_key_fuzzer() -> Fuzzer<
+  (VerificationKeyHash, Address),
+> {
+  let stake_key_hash <- fuzz.and_then(verification_key_hash_fuzzer())
+  let address <-
+    fuzz.map(
+      address_fuzzer(
+        FromKey(Fuzzed),
+        WithDelegationKey(Specified(stake_key_hash)),
+      ),
+    )
+  (stake_key_hash, address)
+}
 
-// fn test_specified_key_address_with_specified_delegation_key_fuzzer() -> Fuzzer<
-//   (VerificationKeyHash, VerificationKeyHash, Address),
-// > {
-//   let payment_key_hash <- fuzz.and_then(verification_key_hash_fuzzer())
-//   let stake_key_hash <- fuzz.and_then(verification_key_hash_fuzzer())
-//   let address <-
-//     fuzz.map(
-//       address_fuzzer(
-//         FromKey(Specified(payment_key_hash)),
-//         WithDelegationKey(Specified(stake_key_hash)),
-//       ),
-//     )
-//   (payment_key_hash, stake_key_hash, address)
-// }
+test testing_fuzzed_key_address_with_specified_delegation_key_fuzzer(
+  (stake_key_hash, Address { payment_credential, stake_credential }) via test_fuzzed_key_address_with_specified_delegation_key_fuzzer(),
+) {
+  expect VerificationKey(_payment_key_hash) = payment_credential
+  //   payment_key_hash |> cbor.diagnostic |> fuzz.label
+  stake_credential == (
+    stake_key_hash |> VerificationKey |> address.Inline |> Some
+  )
+}
 
-// test testing_specified_key_address_with_specified_delegation_key_fuzzer(
-//   (payment_key_hash, stake_key_hash, address) via test_specified_key_address_with_specified_delegation_key_fuzzer(),
-// ) {
-//   address == (
-//     address.from_verification_key(payment_key_hash)
-//       |> address.with_delegation_key(stake_key_hash)
-//   )
-// }
+test testing_fuzzed_key_address_with_fuzzed_delegation_key_fuzzer(
+  Address(payment_credential, stake_credential) via address_fuzzer(
+    FromKey(Fuzzed),
+    WithDelegationKey(Fuzzed),
+  ),
+) {
+  expect VerificationKey(_payment_key_hash) = payment_credential
+  expect Some(address.Inline(VerificationKey(_stake_key_hash))) =
+    stake_credential
+  //   (payment_key_hash, stake_key_hash) |> cbor.diagnostic |> fuzz.label
+}
 
-// fn test_specified_key_address_with_fuzzed_delegation_key_fuzzer() -> Fuzzer<
-//   (VerificationKeyHash, Address),
-// > {
-//   let payment_key_hash <- fuzz.and_then(verification_key_hash_fuzzer())
-//   let address <-
-//     fuzz.map(
-//       address_fuzzer(
-//         FromKey(Specified(payment_key_hash)),
-//         WithDelegationKey(Fuzzed),
-//       ),
-//     )
-//   (payment_key_hash, address)
-// }
+test testing_fuzzed_key_address_with_the_same_delegation_key_fuzzer(
+  Address(payment_credential, stake_credential) via address_fuzzer(
+    FromKey(Fuzzed),
+    WithTheSameDelegationScriptOrKey,
+  ),
+) {
+  expect VerificationKey(_payment_key_hash) = payment_credential
+  expect Some(address.Inline(VerificationKey(_stake_key_hash))) =
+    stake_credential
+  //   (payment_key_hash, stake_key_hash) |> cbor.diagnostic |> fuzz.label
+}
 
-// test testing_specified_key_address_with_fuzzed_delegation_key_fuzzer(
-//   (payment_key_hash, address) via test_specified_key_address_with_fuzzed_delegation_key_fuzzer(),
-// ) {
-//   //   address.stake_credential |> cbor.diagnostic |> fuzz.label
-//   address.payment_credential == VerificationKey(payment_key_hash)
-// }
+test testing_fuzzed_key_address_with_fuzzed_delegation_fuzzer_distribution(
+  Address(payment_credential, stake_credential) via address_fuzzer(
+    FromKey(Fuzzed),
+    WithFuzzedDelegation,
+  ),
+) {
+  expect VerificationKey(payment_key_hash) = payment_credential
+  fuzz.label(
+    when stake_credential is {
+      None ->
+        // 25%
+        @"NoDelegation"
 
-// fn test_specified_key_address_with_the_same_delegation_key_fuzzer() -> Fuzzer<
-//   (VerificationKeyHash, Address),
-// > {
-//   let payment_key_hash <- fuzz.and_then(verification_key_hash_fuzzer())
-//   let address <-
-//     fuzz.map(
-//       address_fuzzer(
-//         FromKey(Specified(payment_key_hash)),
-//         WithTheSameDelegationScriptOrKey,
-//       ),
-//     )
-//   (payment_key_hash, address)
-// }
+      Some(address.Inline(address.Script(_stake_script_hash))) ->
+        // 25%
+        @"DelegationScript"
 
-// test testing_specified_key_address_with_the_same_delegation_key_fuzzer(
-//   (key_hash, address) via test_specified_key_address_with_the_same_delegation_key_fuzzer(),
-// ) {
-//   address == (
-//     address.from_verification_key(key_hash)
-//       |> address.with_delegation_key(key_hash)
-//   )
-// }
+      Some(address.Inline(VerificationKey(stake_key_hash))) ->
+        if payment_key_hash == stake_key_hash {
+          // 25%
+          @"TheSameDelegationKey"
+        } else {
+          // 25%
+          @"DelegationKey"
+        }
 
-// //////////////////////////////////////////////////////////////////////////////////////////////// //
+      Some(_) ->
+        // 0%
+        @"PointerDelegation"
+    },
+  )
+}
 
-pub fn trace_mint(mint: assets.Value) -> Void {
-  let (policy_id, asset_name, quantity) <- list.for_each(mint |> assets.flatten)
-  (policy_id, asset_name, quantity) |> cbor.diagnostic |> fuzz.label
+// ### Fuzzed Address Fuzzers
+
+test testing_fuzzed_address_with_no_delegation_fuzzer_distribution(
+  Address(payment_credential, stake_credential) via address_fuzzer(
+    FromFuzzed,
+    WithNoDelegation,
+  ),
+) {
+  fuzz.label(
+    when payment_credential is {
+      address.Script(_payment_script_hash) -> @"ScriptAddress"
+      VerificationKey(_payment_key_hash) -> @"KeyAddress"
+    },
+  )
+  stake_credential == None
+}
+
+fn test_fuzzed_address_with_specified_delegation_script_fuzzer() -> Fuzzer<
+  (ScriptHash, Address),
+> {
+  let stake_script_hash <- fuzz.and_then(script_hash_fuzzer())
+  let address <-
+    fuzz.map(
+      address_fuzzer(
+        FromFuzzed,
+        WithDelegationScript(Specified(stake_script_hash)),
+      ),
+    )
+  (stake_script_hash, address)
+}
+
+test testing_fuzzed_address_with_specified_delegation_script_fuzzer_distribution(
+  (stake_script_hash, Address { payment_credential, stake_credential }) via test_fuzzed_address_with_specified_delegation_script_fuzzer(),
+) {
+  fuzz.label(
+    when payment_credential is {
+      address.Script(_payment_script_hash) -> @"ScriptAddress"
+      VerificationKey(_payment_key_hash) -> @"KeyAddress"
+    },
+  )
+  stake_credential == (
+    stake_script_hash |> address.Script |> address.Inline |> Some
+  )
+}
+
+test testing_fuzzed_address_with_fuzzed_delegation_script_fuzzer_distribution(
+  Address(payment_credential, stake_credential) via address_fuzzer(
+    FromFuzzed,
+    WithDelegationScript(Fuzzed),
+  ),
+) {
+  fuzz.label(
+    when payment_credential is {
+      address.Script(_payment_script_hash) -> @"ScriptAddress"
+      VerificationKey(_payment_key_hash) -> @"KeyAddress"
+    },
+  )
+  expect Some(address.Inline(address.Script(_stake_script_hash))) =
+    stake_credential
+}
+
+fn test_fuzzed_address_with_specified_delegation_key_fuzzer() -> Fuzzer<
+  (VerificationKeyHash, Address),
+> {
+  let stake_key_hash <- fuzz.and_then(verification_key_hash_fuzzer())
+  let address <-
+    fuzz.map(
+      address_fuzzer(FromFuzzed, WithDelegationKey(Specified(stake_key_hash))),
+    )
+  (stake_key_hash, address)
+}
+
+test testing_fuzzed_address_with_specified_delegation_key_fuzzer_distribution(
+  (stake_key_hash, Address { payment_credential, stake_credential }) via test_fuzzed_address_with_specified_delegation_key_fuzzer(),
+) {
+  fuzz.label(
+    when payment_credential is {
+      address.Script(_payment_script_hash) -> @"ScriptAddress"
+      VerificationKey(_payment_key_hash) -> @"KeyAddress"
+    },
+  )
+  stake_credential == (
+    stake_key_hash |> VerificationKey |> address.Inline |> Some
+  )
+}
+
+test testing_fuzzed_address_with_fuzzed_delegation_key_fuzzer_distribution(
+  Address(payment_credential, stake_credential) via address_fuzzer(
+    FromFuzzed,
+    WithDelegationKey(Fuzzed),
+  ),
+) {
+  fuzz.label(
+    when payment_credential is {
+      address.Script(_payment_script_hash) -> @"ScriptAddress"
+      VerificationKey(_payment_key_hash) -> @"KeyAddress"
+    },
+  )
+  expect Some(address.Inline(VerificationKey(_stake_key_hash))) =
+    stake_credential
+}
+
+test testing_fuzzed_address_with_the_same_delegation_script_or_key_fuzzer_distribution(
+  Address(payment_credential, stake_credential) via address_fuzzer(
+    FromFuzzed,
+    WithTheSameDelegationScriptOrKey,
+  ),
+) {
+  fuzz.label(
+    when payment_credential is {
+      address.Script(_payment_script_hash) -> @"ScriptAddress"
+      VerificationKey(_payment_key_hash) -> @"KeyAddress"
+    },
+  )
+  stake_credential == Some(payment_credential |> address.Inline)
+}
+
+test testing_fuzzed_address_with_fuzzed_delegation_fuzzer_distribution(
+  Address(payment_credential, stake_credential) via address_fuzzer(
+    FromFuzzed,
+    WithFuzzedDelegation,
+  ),
+) {
+  fuzz.label(
+    when (payment_credential, stake_credential) is {
+      // ScriptAddress
+      (address.Script(_payment_script_hash), None) ->
+        // 12.5%
+        @"ScriptAddress with NoDelegation"
+
+      (
+        address.Script(payment_script_hash),
+        Some(address.Inline(address.Script(stake_script_hash))),
+      ) ->
+        if payment_script_hash == stake_script_hash {
+          // 12.5%
+          @"ScriptAddress with TheSameDelegationScript"
+        } else {
+          // 12.5%
+          @"ScriptAddress with DelegationScript"
+        }
+
+      (
+        address.Script(_payment_script_hash),
+        Some(address.Inline(VerificationKey(_stake_key_hash))),
+      ) ->
+        // 12.5%
+        @"ScriptAddress with DelegationKey"
+
+      (address.Script(_payment_script_hash), Some(_)) ->
+        // 0%
+        @"ScriptAddress with PointerDelegation"
+
+      // KeyAddress
+      (VerificationKey(_payment_key_hash), None) ->
+        // 12.5%
+        @"KeyAddress with NoDelegation"
+
+      (
+        VerificationKey(_payment_key_hash),
+        Some(address.Inline(address.Script(_stake_script_hash))),
+      ) ->
+        // 12.5%
+        @"KeyAddress with DelegationScript"
+
+      (
+        VerificationKey(payment_key_hash),
+        Some(address.Inline(VerificationKey(stake_key_hash))),
+      ) ->
+        if payment_key_hash == stake_key_hash {
+          // 12.5%
+          @"KeyAddress with TheSameDelegationKey"
+        } else {
+          // 12.5%
+          @"KeyAddress with DelegationKey"
+        }
+
+      (VerificationKey(_payment_key_hash), Some(_)) ->
+        // 0%
+        @"KeyAddress with PointerDelegation"
+    },
+  )
+}
+
+// ### Credential Fuzzer
+
+fn test_specified_script_credential_fuzzer() -> Fuzzer<
+  (ScriptHash, address.Credential),
+> {
+  let script_hash <- fuzz.and_then(script_hash_fuzzer())
+
+  let credential <-
+    fuzz.map(credential_fuzzer(FromScript(Specified(script_hash))))
+  (script_hash, credential)
+}
+
+test testing_specified_script_credential_fuzzer(
+  (script_hash, credential) via test_specified_script_credential_fuzzer(),
+) {
+  address.Script(script_hash) == credential
+}
+
+test testing_fuzzed_script_credential_fuzzer(
+  credential via credential_fuzzer(FromScript(Fuzzed)),
+) {
+  expect address.Script(_script_hash) = credential
+  //   script_hash |> cbor.diagnostic |> fuzz.label
+}
+
+fn test_specified_key_credential_fuzzer() -> Fuzzer<
+  (VerificationKeyHash, address.Credential),
+> {
+  let verification_key_hash <- fuzz.and_then(verification_key_hash_fuzzer())
+
+  let credential <-
+    fuzz.map(credential_fuzzer(FromKey(Specified(verification_key_hash))))
+  (verification_key_hash, credential)
+}
+
+test testing_specified_key_credential_fuzzer(
+  (verification_key_hash, credential) via test_specified_key_credential_fuzzer(),
+) {
+  VerificationKey(verification_key_hash) == credential
+}
+
+test testing_fuzzed_key_credential_fuzzer(
+  credential via credential_fuzzer(FromKey(Fuzzed)),
+) {
+  expect VerificationKey(_verification_key_hash) = credential
+  //   verification_key_hash |> cbor.diagnostic |> fuzz.label
+}
+
+test testing_fuzzed_credential_fuzzer_distribution(
+  credential via credential_fuzzer(FromFuzzed),
+) {
+  fuzz.label(
+    when credential is {
+      address.Script(_script_hash) -> @"Script"
+      VerificationKey(_key_hash) -> @"VerificationKey"
+    },
+  )
+}
+
+// ## Asset Fuzzers
+
+pub fn trace_value(value: assets.Value) {
+  let flatten_value <- list.for_each(value |> assets.flatten)
+  flatten_value |> cbor.diagnostic |> fuzz.label
+}
+
+test testing_value_fuzzer(
+  value via fuzz.and_then(fuzz.int_at_least(2_000_000), value_fuzzer),
+) {
+  //   value |> trace_value
+  let policies = value |> assets.policies |> list.length
+  expect policies >= 1 && policies <= 1 + 10
+  expect assets.lovelace_of(value) >= 2_000_000
+  expect {
+    let (_policy_id, _token_name, quantity) <- list.all(value |> assets.flatten)
+    quantity > 0
+  }
 }
 
 test testing_mint_fuzzer(mint via mint_fuzzer()) {
-  //   mint |> trace_mint
-  mint |> assets.negate |> assets.merge(mint) |> assets.is_zero
+  //   mint |> trace_value
+  let policies = mint |> assets.policies |> list.length
+  expect policies >= 1 && policies <= 10
+  expect {
+    let (_policy_id, _token_name, quantity) <- list.all(mint |> assets.flatten)
+    quantity > 0
+  }
 }
 
-test testing_inputs_with_an_authentic_script_input_fuzzer(
-  (_spend_script_hash, _script_input, _sorted_inputs) via fuzz.and_then(
-    datum_fuzzer(),
-    inputs_with_an_authentic_script_input_fuzzer,
+// ## Certificate Fuzzers
+
+fn test_specified_script_delegate_representative_fuzzer() -> Fuzzer<
+  (ScriptHash, DelegateRepresentative),
+> {
+  let script_hash <- fuzz.and_then(script_hash_fuzzer())
+
+  let delegate_representative <-
+    fuzz.map(
+      delegate_representative_fuzzer(
+        when_registered: FromScript(Specified(script_hash)),
+      ),
+    )
+  (script_hash, delegate_representative)
+}
+
+test testing_specified_script_delegate_representative_fuzzer_distribution(
+  (script_hash, delegate_representative) via test_specified_script_delegate_representative_fuzzer(),
+) {
+  when delegate_representative is {
+    certificate.Registered(credential) -> {
+      @"Registered Script dRep" |> fuzz.label
+      credential == address.Script(script_hash)
+    }
+
+    AlwaysAbstain -> {
+      @"AlwaysAbstain" |> fuzz.label
+      True
+    }
+
+    AlwaysNoConfidence -> {
+      @"AlwaysNoConfidence" |> fuzz.label
+      True
+    }
+  }
+}
+
+test testing_fuzzed_script_delegate_representative_fuzzer_distribution(
+  delegate_representative via delegate_representative_fuzzer(
+    when_registered: FromScript(Fuzzed),
   ),
 ) {
-  //   (spend_script_hash, script_input, sorted_inputs)
-  //     |> cbor.diagnostic
-  //     |> fuzz.label
-  True
+  when delegate_representative is {
+    certificate.Registered(credential) -> {
+      expect address.Script(_script_hash) = credential
+      @"Registered Script dRep" |> fuzz.label
+    }
+    AlwaysAbstain -> @"AlwaysAbstain" |> fuzz.label
+    AlwaysNoConfidence -> @"AlwaysNoConfidence" |> fuzz.label
+  }
 }
 
-test testing_user_outputs_fuzzer(_user_outputs via user_outputs_fuzzer()) {
-  //   user_outputs |> cbor.diagnostic |> fuzz.label
-  True
+fn test_specified_key_delegate_representative_fuzzer() -> Fuzzer<
+  (VerificationKeyHash, DelegateRepresentative),
+> {
+  let verification_key_hash <- fuzz.and_then(verification_key_hash_fuzzer())
+
+  let delegate_representative <-
+    fuzz.map(
+      delegate_representative_fuzzer(
+        when_registered: FromKey(Specified(verification_key_hash)),
+      ),
+    )
+  (verification_key_hash, delegate_representative)
 }
 
-test testing_script_input_fuzzer(
-  (_script_hash, _transaction_input) via fuzz.and_then(
-    datum_fuzzer(),
-    script_input_fuzzer,
+test testing_specified_key_delegate_representative_fuzzer_distribution(
+  (verification_key_hash, delegate_representative) via test_specified_key_delegate_representative_fuzzer(),
+) {
+  when delegate_representative is {
+    certificate.Registered(credential) -> {
+      @"Registered Key dRep" |> fuzz.label
+      credential == VerificationKey(verification_key_hash)
+    }
+
+    AlwaysAbstain -> {
+      @"AlwaysAbstain" |> fuzz.label
+      True
+    }
+
+    AlwaysNoConfidence -> {
+      @"AlwaysNoConfidence" |> fuzz.label
+      True
+    }
+  }
+}
+
+test testing_fuzzed_key_delegate_representative_fuzzer_distribution(
+  delegate_representative via delegate_representative_fuzzer(
+    when_registered: FromKey(Fuzzed),
   ),
 ) {
-  //   (script_hash, transaction_input) |> cbor.diagnostic |> fuzz.label
-  True
+  when delegate_representative is {
+    certificate.Registered(credential) -> {
+      expect VerificationKey(_verification_key_hash) = credential
+      @"Registered Key dRep" |> fuzz.label
+    }
+    AlwaysAbstain -> @"AlwaysAbstain" |> fuzz.label
+    AlwaysNoConfidence -> @"AlwaysNoConfidence" |> fuzz.label
+  }
 }
 
-fn test_specific_script_input_fuzzer() -> Fuzzer<transaction.Input> {
+test testing_fuzzed_delegate_representative_fuzzer_registered_distribution(
+  delegate_representative via delegate_representative_fuzzer(
+    when_registered: FromFuzzed,
+  ),
+) {
+  when delegate_representative is {
+    certificate.Registered(address.Script(_script_hash)) ->
+      // 16.7%
+      @"Registered Script dRep" |> fuzz.label
+
+    certificate.Registered(VerificationKey(_verification_key_hash)) ->
+      // 16.7%
+      @"Registered Key dRep" |> fuzz.label
+
+    AlwaysAbstain ->
+      // 33.3%
+      @"AlwaysAbstain" |> fuzz.label
+
+    AlwaysNoConfidence ->
+      // 33.3%
+      @"AlwaysNoConfidence" |> fuzz.label
+  }
+}
+
+test testing_delegate_fuzzer_distribution(
+  delegate via delegate_fuzzer(
+    when_block_production: Fuzzed,
+    when_vote: VoteFuzzed,
+    when_both: (Fuzzed, VoteFuzzed),
+  ),
+) {
+  fuzz.label(
+    when delegate is {
+      DelegateBlockProduction(_stake_pool) -> @"DelegateBlockProduction"
+      DelegateVote(_delegate_representative) -> @"DelegateVote"
+      DelegateBoth(_stake_pool, _delegate_representative) -> @"DelegateBoth"
+    },
+  )
+}
+
+// ## Transaction Fuzzers
+
+test testing_datum_fuzzer_distribution(datum via datum_fuzzer()) {
+  //   datum |> cbor.diagnostic |> fuzz.label
+  fuzz.label(
+    when datum is {
+      NoDatum -> @"NoDatum"
+      DatumHash(_data_hash) -> @"DatumHash"
+      InlineDatum(_data) -> @"InlineDatum"
+    },
+  )
+}
+
+// ### Output Reference Fuzzer
+
+fn test_output_reference(
+  OutputReference { transaction_id, output_index },
+) -> Bool {
+  and {
+    bytearray.length(transaction_id) == 32,
+    output_index >= 0 && output_index <= 512,
+  }
+}
+
+test testing_output_reference_fuzzer(o_ref via output_reference_fuzzer()) {
+  //   o_ref |> cbor.diagnostic |> fuzz.label
+  o_ref |> test_output_reference
+}
+
+// ### Transaction Output Fuzzers
+
+fn test_user_output(utxo: transaction.Output) -> Bool {
+  let transaction.Output(
+    Address(payment_credential, stake_credential),
+    value,
+    datum,
+    reference_script,
+  ) = utxo
+
+  // check address
+  expect VerificationKey(_payment_key_hash) = payment_credential
+  expect Some(address.Inline(VerificationKey(_stake_key_hash))) =
+    stake_credential
+
+  // check value
+  let policies = value |> assets.policies |> list.length
+  expect policies >= 1 && policies <= 1 + 10
+  expect assets.lovelace_of(value) >= 2_000_000
+  expect {
+    let (_policy_id, _token_name, quantity) <- list.all(value |> assets.flatten)
+    quantity > 0
+  }
+
+  // check datum and reference script
+  datum == NoDatum && reference_script == None
+}
+
+test testing_user_output_fuzzer(utxo via user_output_fuzzer()) {
+  utxo |> test_user_output
+}
+
+test testing_user_outputs_fuzzer(utxos via user_outputs_fuzzer()) {
+  let utxos_length = utxos |> list.length
+  expect utxos_length >= 1 && utxos_length <= 10
+
+  let utxo <- list.all(utxos)
+  utxo |> test_user_output
+}
+
+fn test_script_output(
+  script_hash: ScriptHash,
+  datum: transaction.Datum,
+  utxo: transaction.Output,
+) -> Bool {
+  // check address
+  expect utxo.address == address.from_script(script_hash)
+
+  // check value
+  let policies = utxo.value |> assets.policies |> list.length
+  expect policies >= 1 && policies <= 1 + 10
+  expect assets.lovelace_of(utxo.value) >= 2_000_000
+  expect {
+    let (_policy_id, _token_name, quantity) <-
+      list.all(utxo.value |> assets.flatten)
+    quantity > 0
+  }
+
+  // check datum and reference script
+  utxo.datum == datum && utxo.reference_script == None
+}
+
+fn test_specific_script_output_fuzzer() -> Fuzzer<
+  (ScriptHash, transaction.Datum, transaction.Output),
+> {
   let script_hash <- fuzz.and_then(script_hash_fuzzer())
   let datum <- fuzz.and_then(datum_fuzzer())
-  specific_script_input_fuzzer(script_hash, datum)
+
+  let utxo <- fuzz.map(specific_script_output_fuzzer(script_hash, datum))
+  (script_hash, datum, utxo)
+}
+
+test testing_specific_script_output_fuzzer(
+  (script_hash, datum, utxo) via test_specific_script_output_fuzzer(),
+) {
+  test_script_output(script_hash, datum, utxo)
+}
+
+fn test_script_output_fuzzer(
+  fuzzer: fn(transaction.Datum) -> Fuzzer<(ScriptHash, transaction.Output)>,
+) -> Fuzzer<(ScriptHash, transaction.Datum, transaction.Output)> {
+  let datum <- fuzz.and_then(datum_fuzzer())
+
+  let (script_hash, utxo) <- fuzz.map(fuzzer(datum))
+  (script_hash, datum, utxo)
+}
+
+test testing_script_output_fuzzer(
+  (script_hash, datum, utxo) via test_script_output_fuzzer(script_output_fuzzer),
+) {
+  test_script_output(script_hash, datum, utxo)
+}
+
+fn test_authentic_script_output(
+  script_hash: ScriptHash,
+  datum: transaction.Datum,
+  utxo: transaction.Output,
+) -> Bool {
+  // check address
+  expect utxo.address == address.from_script(script_hash)
+
+  // check value
+  let policies = utxo.value |> assets.policies |> list.length
+  expect 2 = policies
+  expect 2_000_000 = assets.lovelace_of(utxo.value)
+  expect [(policy_id, _token_name, quantity)] =
+    utxo.value |> assets.without_lovelace |> assets.flatten
+  expect policy_id == script_hash && quantity == 1
+
+  // check datum and reference script
+  utxo.datum == datum && utxo.reference_script == None
+}
+
+test testing_authentic_script_output_fuzzer(
+  (script_hash, datum, utxo) via test_script_output_fuzzer(
+    authentic_script_output_fuzzer,
+  ),
+) {
+  test_authentic_script_output(script_hash, datum, utxo)
+}
+
+// ### Transaction Input Fuzzers
+
+fn test_user_input(in: transaction.Input) -> Bool {
+  let transaction.Input(o_ref, utxo) = in
+  and {
+    o_ref |> test_output_reference,
+    utxo |> test_user_output,
+  }
+}
+
+test testing_user_input_fuzzer(in via user_input_fuzzer()) {
+  //   in |> cbor.diagnostic |> fuzz.label
+  in |> test_user_input
+}
+
+test testing_user_inputs_fuzzer(ins via user_inputs_fuzzer()) {
+  let ins_length = ins |> list.length
+  expect ins_length >= 1 && ins_length <= 10
+
+  let in <- list.all(ins)
+  in |> test_user_input
+}
+
+fn test_script_input(
+  script_hash: ScriptHash,
+  datum: transaction.Datum,
+  in: transaction.Input,
+) -> Bool {
+  let transaction.Input(o_ref, utxo) = in
+  and {
+    test_output_reference(o_ref),
+    test_script_output(script_hash, datum, utxo),
+  }
+}
+
+fn test_specific_script_input_fuzzer() -> Fuzzer<
+  (ScriptHash, transaction.Datum, transaction.Input),
+> {
+  let script_hash <- fuzz.and_then(script_hash_fuzzer())
+  let datum <- fuzz.and_then(datum_fuzzer())
+
+  let in <- fuzz.map(specific_script_input_fuzzer(script_hash, datum))
+  (script_hash, datum, in)
 }
 
 test testing_specific_script_input_fuzzer(
-  _specific_script_input via test_specific_script_input_fuzzer(),
+  (script_hash, datum, in) via test_specific_script_input_fuzzer(),
 ) {
-  //   specific_script_input |> cbor.diagnostic |> fuzz.label
-  True
+  test_script_input(script_hash, datum, in)
+}
+
+fn test_script_input_fuzzer(
+  fuzzer: fn(transaction.Datum) -> Fuzzer<(ScriptHash, transaction.Input)>,
+) -> Fuzzer<(ScriptHash, transaction.Datum, transaction.Input)> {
+  let datum <- fuzz.and_then(datum_fuzzer())
+
+  let (script_hash, script_input) <- fuzz.map(fuzzer(datum))
+  (script_hash, datum, script_input)
+}
+
+test testing_script_input_fuzzer(
+  (script_hash, datum, script_input) via test_script_input_fuzzer(
+    script_input_fuzzer,
+  ),
+) {
+  test_script_input(script_hash, datum, script_input)
+}
+
+fn test_authentic_script_input(
+  script_hash: ScriptHash,
+  datum: transaction.Datum,
+  script_input: transaction.Input,
+) -> Bool {
+  let transaction.Input(o_ref, utxo) = script_input
+  and {
+    test_output_reference(o_ref),
+    test_authentic_script_output(script_hash, datum, utxo),
+  }
+}
+
+test testing_authentic_script_input_fuzzer(
+  (script_hash, datum, script_input) via test_script_input_fuzzer(
+    authentic_script_input_fuzzer,
+  ),
+) {
+  test_authentic_script_input(script_hash, datum, script_input)
+}
+
+fn test_inputs_with_an_authentic_script_input_fuzzer() -> Fuzzer<
+  (ScriptHash, transaction.Datum, transaction.Input, List<transaction.Input>),
+> {
+  let datum <- fuzz.and_then(datum_fuzzer())
+
+  let (script_hash, script_input, sorted_inputs) <-
+    fuzz.map(inputs_with_an_authentic_script_input_fuzzer(datum))
+  (script_hash, datum, script_input, sorted_inputs)
+}
+
+test testing_inputs_with_an_authentic_script_input_fuzzer(
+  (script_hash, datum, script_input, sorted_inputs) via test_inputs_with_an_authentic_script_input_fuzzer(),
+) {
+  //   expect test_authentic_script_input(script_hash, datum, script_input)
+  let in <- list.all(sorted_inputs)
+  if in == script_input {
+    test_authentic_script_input(script_hash, datum, script_input)
+  } else {
+    test_user_input(in)
+  }
+}
+
+// ## Tuple Fuzzers
+
+fn prop_tuple2() -> Fuzzer<Bool> {
+  let a <- fuzz.and_then(data_fuzzer())
+  let b <- fuzz.and_then(data_fuzzer())
+
+  let fuzzer_a = a |> fuzz.constant
+  let fuzzer_b = b |> fuzz.constant
+
+  let l_tuple <- fuzz.and_then(tuple(fuzzer_a, fuzzer_b))
+  let r_tuple <-
+    fuzz.and_then(fuzz.map2(fuzzer_a, fuzzer_b, fn(a, b) { (a, b) }))
+
+  fuzz.constant(l_tuple == r_tuple)
+}
+
+fn prop_tuple3() -> Fuzzer<Bool> {
+  let a <- fuzz.and_then(data_fuzzer())
+  let b <- fuzz.and_then(data_fuzzer())
+  let c <- fuzz.and_then(data_fuzzer())
+
+  let fuzzer_a = a |> fuzz.constant
+  let fuzzer_b = b |> fuzz.constant
+  let fuzzer_c = c |> fuzz.constant
+
+  let l_tuple <- fuzz.and_then(tuple3(fuzzer_a, fuzzer_b, fuzzer_c))
+  let r_tuple <-
+    fuzz.and_then(
+      fuzz.map3(fuzzer_a, fuzzer_b, fuzzer_c, fn(a, b, c) { (a, b, c) }),
+    )
+
+  fuzz.constant(l_tuple == r_tuple)
+}
+
+fn prop_tuple4() -> Fuzzer<Bool> {
+  let a <- fuzz.and_then(data_fuzzer())
+  let b <- fuzz.and_then(data_fuzzer())
+  let c <- fuzz.and_then(data_fuzzer())
+  let d <- fuzz.and_then(data_fuzzer())
+
+  let fuzzer_a = a |> fuzz.constant
+  let fuzzer_b = b |> fuzz.constant
+  let fuzzer_c = c |> fuzz.constant
+  let fuzzer_d = d |> fuzz.constant
+
+  let l_tuple <- fuzz.and_then(tuple4(fuzzer_a, fuzzer_b, fuzzer_c, fuzzer_d))
+  let r_tuple <-
+    fuzz.and_then(
+      fuzz.map4(
+        fuzzer_a,
+        fuzzer_b,
+        fuzzer_c,
+        fuzzer_d,
+        fn(a, b, c, d) { (a, b, c, d) },
+      ),
+    )
+
+  fuzz.constant(l_tuple == r_tuple)
+}
+
+fn prop_tuple5() -> Fuzzer<Bool> {
+  let a <- fuzz.and_then(data_fuzzer())
+  let b <- fuzz.and_then(data_fuzzer())
+  let c <- fuzz.and_then(data_fuzzer())
+  let d <- fuzz.and_then(data_fuzzer())
+  let e <- fuzz.and_then(data_fuzzer())
+
+  let fuzzer_a = a |> fuzz.constant
+  let fuzzer_b = b |> fuzz.constant
+  let fuzzer_c = c |> fuzz.constant
+  let fuzzer_d = d |> fuzz.constant
+  let fuzzer_e = e |> fuzz.constant
+
+  let l_tuple <-
+    fuzz.and_then(tuple5(fuzzer_a, fuzzer_b, fuzzer_c, fuzzer_d, fuzzer_e))
+  let r_tuple <-
+    fuzz.and_then(
+      fuzz.map5(
+        fuzzer_a,
+        fuzzer_b,
+        fuzzer_c,
+        fuzzer_d,
+        fuzzer_e,
+        fn(a, b, c, d, e) { (a, b, c, d, e) },
+      ),
+    )
+
+  fuzz.constant(l_tuple == r_tuple)
+}
+
+fn prop_tuple6() -> Fuzzer<Bool> {
+  let a <- fuzz.and_then(data_fuzzer())
+  let b <- fuzz.and_then(data_fuzzer())
+  let c <- fuzz.and_then(data_fuzzer())
+  let d <- fuzz.and_then(data_fuzzer())
+  let e <- fuzz.and_then(data_fuzzer())
+  let f <- fuzz.and_then(data_fuzzer())
+
+  let fuzzer_a = a |> fuzz.constant
+  let fuzzer_b = b |> fuzz.constant
+  let fuzzer_c = c |> fuzz.constant
+  let fuzzer_d = d |> fuzz.constant
+  let fuzzer_e = e |> fuzz.constant
+  let fuzzer_f = f |> fuzz.constant
+
+  let l_tuple <-
+    fuzz.and_then(
+      tuple6(fuzzer_a, fuzzer_b, fuzzer_c, fuzzer_d, fuzzer_e, fuzzer_f),
+    )
+  let r_tuple <-
+    fuzz.and_then(
+      fuzz.map6(
+        fuzzer_a,
+        fuzzer_b,
+        fuzzer_c,
+        fuzzer_d,
+        fuzzer_e,
+        fuzzer_f,
+        fn(a, b, c, d, e, f) { (a, b, c, d, e, f) },
+      ),
+    )
+
+  fuzz.constant(l_tuple == r_tuple)
+}
+
+fn prop_tuple7() -> Fuzzer<Bool> {
+  let a <- fuzz.and_then(data_fuzzer())
+  let b <- fuzz.and_then(data_fuzzer())
+  let c <- fuzz.and_then(data_fuzzer())
+  let d <- fuzz.and_then(data_fuzzer())
+  let e <- fuzz.and_then(data_fuzzer())
+  let f <- fuzz.and_then(data_fuzzer())
+  let g <- fuzz.and_then(data_fuzzer())
+
+  let fuzzer_a = a |> fuzz.constant
+  let fuzzer_b = b |> fuzz.constant
+  let fuzzer_c = c |> fuzz.constant
+  let fuzzer_d = d |> fuzz.constant
+  let fuzzer_e = e |> fuzz.constant
+  let fuzzer_f = f |> fuzz.constant
+  let fuzzer_g = g |> fuzz.constant
+
+  let l_tuple <-
+    fuzz.and_then(
+      tuple7(
+        fuzzer_a,
+        fuzzer_b,
+        fuzzer_c,
+        fuzzer_d,
+        fuzzer_e,
+        fuzzer_f,
+        fuzzer_g,
+      ),
+    )
+  let r_tuple <-
+    fuzz.and_then(
+      fuzz.map7(
+        fuzzer_a,
+        fuzzer_b,
+        fuzzer_c,
+        fuzzer_d,
+        fuzzer_e,
+        fuzzer_f,
+        fuzzer_g,
+        fn(a, b, c, d, e, f, g) { (a, b, c, d, e, f, g) },
+      ),
+    )
+
+  fuzz.constant(l_tuple == r_tuple)
+}
+
+fn prop_tuple8() -> Fuzzer<Bool> {
+  let a <- fuzz.and_then(data_fuzzer())
+  let b <- fuzz.and_then(data_fuzzer())
+  let c <- fuzz.and_then(data_fuzzer())
+  let d <- fuzz.and_then(data_fuzzer())
+  let e <- fuzz.and_then(data_fuzzer())
+  let f <- fuzz.and_then(data_fuzzer())
+  let g <- fuzz.and_then(data_fuzzer())
+  let h <- fuzz.and_then(data_fuzzer())
+
+  let fuzzer_a = a |> fuzz.constant
+  let fuzzer_b = b |> fuzz.constant
+  let fuzzer_c = c |> fuzz.constant
+  let fuzzer_d = d |> fuzz.constant
+  let fuzzer_e = e |> fuzz.constant
+  let fuzzer_f = f |> fuzz.constant
+  let fuzzer_g = g |> fuzz.constant
+  let fuzzer_h = h |> fuzz.constant
+
+  let l_tuple <-
+    fuzz.and_then(
+      tuple8(
+        fuzzer_a,
+        fuzzer_b,
+        fuzzer_c,
+        fuzzer_d,
+        fuzzer_e,
+        fuzzer_f,
+        fuzzer_g,
+        fuzzer_h,
+      ),
+    )
+  let r_tuple <-
+    fuzz.and_then(
+      fuzz.map8(
+        fuzzer_a,
+        fuzzer_b,
+        fuzzer_c,
+        fuzzer_d,
+        fuzzer_e,
+        fuzzer_f,
+        fuzzer_g,
+        fuzzer_h,
+        fn(a, b, c, d, e, f, g, h) { (a, b, c, d, e, f, g, h) },
+      ),
+    )
+
+  fuzz.constant(l_tuple == r_tuple)
+}
+
+fn prop_tuple9() -> Fuzzer<Bool> {
+  let a <- fuzz.and_then(data_fuzzer())
+  let b <- fuzz.and_then(data_fuzzer())
+  let c <- fuzz.and_then(data_fuzzer())
+  let d <- fuzz.and_then(data_fuzzer())
+  let e <- fuzz.and_then(data_fuzzer())
+  let f <- fuzz.and_then(data_fuzzer())
+  let g <- fuzz.and_then(data_fuzzer())
+  let h <- fuzz.and_then(data_fuzzer())
+  let i <- fuzz.and_then(data_fuzzer())
+
+  let fuzzer_a = a |> fuzz.constant
+  let fuzzer_b = b |> fuzz.constant
+  let fuzzer_c = c |> fuzz.constant
+  let fuzzer_d = d |> fuzz.constant
+  let fuzzer_e = e |> fuzz.constant
+  let fuzzer_f = f |> fuzz.constant
+  let fuzzer_g = g |> fuzz.constant
+  let fuzzer_h = h |> fuzz.constant
+  let fuzzer_i = i |> fuzz.constant
+
+  let l_tuple <-
+    fuzz.and_then(
+      tuple9(
+        fuzzer_a,
+        fuzzer_b,
+        fuzzer_c,
+        fuzzer_d,
+        fuzzer_e,
+        fuzzer_f,
+        fuzzer_g,
+        fuzzer_h,
+        fuzzer_i,
+      ),
+    )
+  let r_tuple <-
+    fuzz.and_then(
+      fuzz.map9(
+        fuzzer_a,
+        fuzzer_b,
+        fuzzer_c,
+        fuzzer_d,
+        fuzzer_e,
+        fuzzer_f,
+        fuzzer_g,
+        fuzzer_h,
+        fuzzer_i,
+        fn(a, b, c, d, e, f, g, h, i) { (a, b, c, d, e, f, g, h, i) },
+      ),
+    )
+
+  fuzz.constant(l_tuple == r_tuple)
+}
+
+fn prop_tuple2_to_tuple9() -> Fuzzer<Bool> {
+  let tuple2_map2 <- fuzz.and_then(prop_tuple2())
+  let tuple3_map3 <- fuzz.and_then(prop_tuple3())
+  let tuple4_map4 <- fuzz.and_then(prop_tuple4())
+  let tuple5_map5 <- fuzz.and_then(prop_tuple5())
+  let tuple6_map6 <- fuzz.and_then(prop_tuple6())
+  let tuple7_map7 <- fuzz.and_then(prop_tuple7())
+  let tuple8_map8 <- fuzz.and_then(prop_tuple8())
+  let tuple9_map9 <- fuzz.and_then(prop_tuple9())
+
+  fuzz.constant(and {
+      tuple2_map2,
+      tuple3_map3,
+      tuple4_map4,
+      tuple5_map5,
+      tuple6_map6,
+      tuple7_map7,
+      tuple8_map8,
+      tuple9_map9,
+    })
+}
+
+test testing_all_tuple_fuzzers(match via prop_tuple2_to_tuple9()) {
+  match
 }
