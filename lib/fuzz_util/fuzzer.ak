@@ -455,11 +455,7 @@ pub fn delegate_fuzzer(
             }
             VoteAlwaysAbstain -> fuzz.constant(d_rep.always_abstain)
             VoteAlwaysNoConfidence -> fuzz.constant(d_rep.always_no_confidence)
-            VoteFuzzed -> {
-              let delegate_representative <-
-                fuzz.map(delegate_representative_fuzzer(FromFuzzed))
-              delegate_representative
-            }
+            VoteFuzzed -> delegate_representative_fuzzer(FromFuzzed)
           },
         )
       DelegateVote(delegate_representative)
