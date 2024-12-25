@@ -130,7 +130,8 @@ pub type VoteDelegateRepresentative {
 
 // ## Address Fuzzers
 
-/// Fuzzes an address. See [`FromCredential`](#FromCredential) and [`WithDelegation`](#WithDelegation)
+/// An [`Address`](https://aiken-lang.github.io/stdlib/cardano/address.html#Address) fuzzer.
+/// See [`FromCredential`](#FromCredential) and [`WithDelegation`](#WithDelegation)
 /// for more information and usage examples.
 pub fn address_fuzzer(
   from: FromCredential,
@@ -291,7 +292,7 @@ pub fn asset_name_fuzzer() -> Fuzzer<AssetName> {
   fuzz.bytearray_between(0, 32)
 }
 
-/// A `Value` fuzzer,
+/// A [`Value`](https://aiken-lang.github.io/stdlib/cardano/assets.html#Value) fuzzer,
 /// guaranteed to include some amount of ADA (minimum must be specified)
 ///
 /// Fuzzes a list of assets with some ADA with quantity of at least as the specified minimum amount, and 0-10 tokens:
@@ -316,7 +317,7 @@ pub fn value_fuzzer(min_lovelaces: assets.Lovelace) -> Fuzzer<assets.Value> {
   other_assets_values |> list.foldl(lovelace_value, assets.merge)
 }
 
-/// A `Value` fuzzer with a single asset.
+/// A [`Value`](https://aiken-lang.github.io/stdlib/cardano/assets.html#Value) fuzzer with a single asset.
 /// Randomly generates the Policy ID.
 ///
 /// Fuzzes the following token:
@@ -332,7 +333,7 @@ pub fn single_asset_value_fuzzer() -> Fuzzer<assets.Value> {
   policy_id |> single_specific_asset_value_fuzzer
 }
 
-/// A fuzzer for `Value` with a single asset.
+/// A fuzzer for [`Value`](https://aiken-lang.github.io/stdlib/cardano/assets.html#Value) with a single asset.
 /// Unsafely expects 28 bytes long Policy ID to be provided.
 ///
 /// Fuzzes the following token:
@@ -353,7 +354,7 @@ pub fn single_specific_asset_value_fuzzer(
   policy_id |> assets.from_asset(token_name, quantity)
 }
 
-/// A `Value` fuzzer without any lovelaces.
+/// A [`Value`](https://aiken-lang.github.io/stdlib/cardano/assets.html#Value) fuzzer without any lovelaces.
 ///
 /// Fuzzes 1-10 tokens:
 /// ```aiken
@@ -478,7 +479,8 @@ pub fn delegate_fuzzer(
 
 // ## Governance Fuzzers
 
-/// Fuzzes a `Constitution` with either `Some`(`"KNOWN_SCRIPT_HASH"` | `Any Script Hash`) or `None`
+/// Fuzzes a [`Constitution`](https://aiken-lang.github.io/stdlib/cardano/governance.html#Constitution)
+/// with either `Some`(`"KNOWN_SCRIPT_HASH"` | `Any Script Hash`) or `None`
 /// ```aiken
 /// // Fuzzes either:
 /// // - Constitution(Some("KNOWN_SCRIPT_HASH" |> Script))
@@ -575,7 +577,7 @@ pub fn voter_fuzzer(
 /// datum_fuzzer(when_datum_hash: data_hash_fuzzer(), when_inline_datum: data_fuzzer())
 /// 
 /// // Fuzzes either:
-/// // - DatumHash("KNOWN_DATA_HASH" |> DataHash)
+/// // - DatumHash(Known DataHash)
 /// // - InlineDatum(Any Data)
 /// // - NoDatum
 /// datum_fuzzer(when_datum_hash: fuzz.constant("KNOWN_DATA_HASH"), when_inline_datum: data_fuzzer())
@@ -593,8 +595,8 @@ pub fn voter_fuzzer(
 /// datum_fuzzer(when_datum_hash: fuzz.constant("KNOWN_DATA_HASH"), when_inline_datum: fuzz.constant(known_data))
 /// ```
 /// See also:
-/// - [`data_hash_fuzzer`](#data_hash_fuzzer)
-/// - [`data_fuzzer`](#data_fuzzer)
+/// - [`data_hash_fuzzer`](#data_hash_fuzzer)`()`
+/// - [`data_fuzzer`](#data_fuzzer)`()`
 pub fn datum_fuzzer(
   when_datum_hash: Fuzzer<DataHash>,
   when_inline_datum: Fuzzer<Data>,
