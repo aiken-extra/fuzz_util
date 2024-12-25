@@ -478,6 +478,18 @@ pub fn delegate_fuzzer(
 
 // ## Governance Fuzzers
 
+/// Fuzzes a `Constitution` with either `Some`(`"KNOWN_SCRIPT_HASH"` | `Any Script Hash`) or `None`
+/// ```aiken
+/// // Fuzzes either:
+/// // - Constitution(Some("KNOWN_SCRIPT_HASH" |> Script))
+/// // - Constitution(None)
+/// constitution_fuzzer(some_guardrails: Specified("KNOWN_SCRIPT_HASH"))
+/// 
+/// // Fuzzes either:
+/// // - Constitution(Some(Any Script Hash))
+/// // - Constitution(None)
+/// constitution_fuzzer(some_guardrails: Fuzzed)
+/// ```
 pub fn constitution_fuzzer(some_guardrails: CredentialHash) {
   let guardrails <-
     fuzz.map(
@@ -503,14 +515,19 @@ pub fn governance_action_id_fuzzer() -> Fuzzer<GovernanceActionId> {
   GovernanceActionId(transaction_id, action_index)
 }
 
+/// Fuzzes either `Yes` | `No` | `Abstain`
 pub fn vote_fuzzer() {
   fuzz.either3(
-    governance.No |> fuzz.constant,
     governance.Yes |> fuzz.constant,
+    governance.No |> fuzz.constant,
     governance.Abstain |> fuzz.constant,
   )
 }
 
+/// Fuzzes either:
+/// - `ConstitutionalCommitteeMember`([`FromCredential`](#FromCredential))
+/// - `DelegateRepresentative`([`FromCredential`](#FromCredential))
+/// - `StakePool`([`StakePoolHash`](#StakePoolHash))
 pub fn voter_fuzzer(
   when_constitutional_committee_member: FromCredential,
   when_delegate_representative: FromCredential,
