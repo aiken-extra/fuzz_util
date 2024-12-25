@@ -2,7 +2,7 @@
 
 use aiken/cbor
 use aiken/collection/list
-use aiken/crypto.{ScriptHash, VerificationKeyHash}
+use aiken/crypto.{DataHash, ScriptHash, VerificationKeyHash}
 use aiken/fuzz
 use aiken/primitive/bytearray
 use cardano/address.{Address, VerificationKey}
@@ -17,9 +17,10 @@ use fuzz_util/fuzzer.{
   WithDelegationKey, WithDelegationScript, WithFuzzedDelegation,
   WithNoDelegation, WithTheSameDelegationScriptOrKey, address_fuzzer,
   authentic_script_input_fuzzer, authentic_script_output_fuzzer,
-  credential_fuzzer, data_fuzzer, datum_fuzzer, delegate_fuzzer,
-  delegate_representative_fuzzer, inputs_with_an_authentic_script_input_fuzzer,
-  mint_fuzzer, output_reference_fuzzer, script_hash_fuzzer, script_input_fuzzer,
+  credential_fuzzer, data_fuzzer, data_hash_fuzzer, datum_fuzzer,
+  delegate_fuzzer, delegate_representative_fuzzer,
+  inputs_with_an_authentic_script_input_fuzzer, mint_fuzzer,
+  output_reference_fuzzer, script_hash_fuzzer, script_input_fuzzer,
   script_output_fuzzer, specific_script_input_fuzzer,
   specific_script_output_fuzzer, tuple, tuple3, tuple4, tuple5, tuple6, tuple7,
   tuple8, tuple9, user_input_fuzzer, user_inputs_fuzzer, user_output_fuzzer,
@@ -1050,17 +1051,98 @@ test testing_delegate_fuzzer_distribution(
   )
 }
 
+// ## Governance Fuzzers
+
 // ## Transaction Fuzzers
 
-test testing_datum_fuzzer_distribution(datum via datum_fuzzer()) {
+test testing_datum_fuzzer_distribution(
+  datum via datum_fuzzer(
+    when_datum_hash: data_hash_fuzzer(),
+    when_inline_datum: data_fuzzer(),
+  ),
+) {
   //   datum |> cbor.diagnostic |> fuzz.label
   fuzz.label(
     when datum is {
-      NoDatum -> @"NoDatum"
       DatumHash(_data_hash) -> @"DatumHash"
       InlineDatum(_data) -> @"InlineDatum"
+      NoDatum -> @"NoDatum"
     },
   )
+}
+
+fn test_specified_data_hash_datum_when_datum_hash_fuzzer() -> Fuzzer<
+  (DataHash, transaction.Datum),
+> {
+  let data_hash <- fuzz.and_then(data_hash_fuzzer())
+
+  let datum <-
+    fuzz.map(
+      datum_fuzzer(
+        when_datum_hash: data_hash |> fuzz.constant,
+        when_inline_datum: data_fuzzer(),
+      ),
+    )
+  (data_hash, datum)
+}
+
+test testing_specified_data_hash_datum_when_datum_hash_fuzzer(
+  (data_hash, datum) via test_specified_data_hash_datum_when_datum_hash_fuzzer(),
+) {
+  when datum is {
+    DatumHash(hash) -> data_hash == hash
+    _ -> True
+  }
+}
+
+fn test_specified_data_datum_when_inline_datum_fuzzer() -> Fuzzer<
+  (Data, transaction.Datum),
+> {
+  let data <- fuzz.and_then(data_fuzzer())
+
+  let datum <-
+    fuzz.map(
+      datum_fuzzer(
+        when_datum_hash: data_hash_fuzzer(),
+        when_inline_datum: data |> fuzz.constant,
+      ),
+    )
+  (data, datum)
+}
+
+test testing_specified_data_datum_when_inline_datum_fuzzer(
+  (inline_data, datum) via test_specified_data_datum_when_inline_datum_fuzzer(),
+) {
+  when datum is {
+    InlineDatum(inline) -> inline == inline_data
+    _ -> True
+  }
+}
+
+fn test_specified_both_data_datum_when_inline_or_hash_fuzzer() -> Fuzzer<
+  (DataHash, Data, transaction.Datum),
+> {
+  let data_hash <- fuzz.and_then(data_hash_fuzzer())
+  let data <- fuzz.and_then(data_fuzzer())
+
+  let datum <-
+    fuzz.map(
+      datum_fuzzer(
+        when_datum_hash: data_hash |> fuzz.constant,
+        when_inline_datum: data |> fuzz.constant,
+      ),
+    )
+  (data_hash, data, datum)
+}
+
+test testing_specified_both_data_datum_when_inline_or_hash_fuzzer(
+  (data_hash, inline_data, datum) via test_specified_both_data_datum_when_inline_or_hash_fuzzer(),
+) {
+  when datum is {
+    DatumHash(hash) -> data_hash == hash
+    InlineDatum(inline) -> inline == inline_data
+    _ -> True
+  }
 }
 
 // ### Output Reference Fuzzer
@@ -1145,7 +1227,13 @@ fn test_specific_script_output_fuzzer() -> Fuzzer<
   (ScriptHash, transaction.Datum, transaction.Output),
 > {
   let script_hash <- fuzz.and_then(script_hash_fuzzer())
-  let datum <- fuzz.and_then(datum_fuzzer())
+  let datum <-
+    fuzz.and_then(
+      datum_fuzzer(
+        when_datum_hash: data_hash_fuzzer(),
+        when_inline_datum: data_fuzzer(),
+      ),
+    )
 
   let utxo <- fuzz.map(specific_script_output_fuzzer(script_hash, datum))
   (script_hash, datum, utxo)
@@ -1160,7 +1248,13 @@ test testing_specific_script_output_fuzzer(
 fn test_script_output_fuzzer(
   fuzzer: fn(transaction.Datum) -> Fuzzer<(ScriptHash, transaction.Output)>,
 ) -> Fuzzer<(ScriptHash, transaction.Datum, transaction.Output)> {
-  let datum <- fuzz.and_then(datum_fuzzer())
+  let datum <-
+    fuzz.and_then(
+      datum_fuzzer(
+        when_datum_hash: data_hash_fuzzer(),
+        when_inline_datum: data_fuzzer(),
+      ),
+    )
 
   let (script_hash, utxo) <- fuzz.map(fuzzer(datum))
   (script_hash, datum, utxo)
@@ -1239,7 +1333,13 @@ fn test_specific_script_input_fuzzer() -> Fuzzer<
   (ScriptHash, transaction.Datum, transaction.Input),
 > {
   let script_hash <- fuzz.and_then(script_hash_fuzzer())
-  let datum <- fuzz.and_then(datum_fuzzer())
+  let datum <-
+    fuzz.and_then(
+      datum_fuzzer(
+        when_datum_hash: data_hash_fuzzer(),
+        when_inline_datum: data_fuzzer(),
+      ),
+    )
 
   let in <- fuzz.map(specific_script_input_fuzzer(script_hash, datum))
   (script_hash, datum, in)
@@ -1254,7 +1354,13 @@ test testing_specific_script_input_fuzzer(
 fn test_script_input_fuzzer(
   fuzzer: fn(transaction.Datum) -> Fuzzer<(ScriptHash, transaction.Input)>,
 ) -> Fuzzer<(ScriptHash, transaction.Datum, transaction.Input)> {
-  let datum <- fuzz.and_then(datum_fuzzer())
+  let datum <-
+    fuzz.and_then(
+      datum_fuzzer(
+        when_datum_hash: data_hash_fuzzer(),
+        when_inline_datum: data_fuzzer(),
+      ),
+    )
 
   let (script_hash, script_input) <- fuzz.map(fuzzer(datum))
   (script_hash, datum, script_input)
@@ -1291,7 +1397,13 @@ test testing_authentic_script_input_fuzzer(
 fn test_inputs_with_an_authentic_script_input_fuzzer() -> Fuzzer<
   (ScriptHash, transaction.Datum, transaction.Input, List<transaction.Input>),
 > {
-  let datum <- fuzz.and_then(datum_fuzzer())
+  let datum <-
+    fuzz.and_then(
+      datum_fuzzer(
+        when_datum_hash: data_hash_fuzzer(),
+        when_inline_datum: data_fuzzer(),
+      ),
+    )
 
   let (script_hash, script_input, sorted_inputs) <-
     fuzz.map(inputs_with_an_authentic_script_input_fuzzer(datum))

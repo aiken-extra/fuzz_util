@@ -566,22 +566,46 @@ pub fn voter_fuzzer(
 
 // ## Transaction Fuzzers
 
-/// Fuzzes either `NoDatum` | `DatumHash`(`data_hash`) | `InlineDatum`(`data`)
-///
-/// Where,
-/// - `data_hash` `<-` [`data_hash_fuzzer`](#data_hash_fuzzer)`()`
-/// - `data` `<-` [`data_fuzzer`](#data_fuzzer)`()`
-pub fn datum_fuzzer() -> Fuzzer<transaction.Datum> {
+/// Fuzzes either `DatumHash`(`data_hash`) | `InlineDatum`(`data`) | `NoDatum`
+/// ```aiken
+/// // Fuzzes either:
+/// // - DatumHash(Any DataHash)
+/// // - InlineDatum(Any Data)
+/// // - NoDatum
+/// datum_fuzzer(when_datum_hash: data_hash_fuzzer(), when_inline_datum: data_fuzzer())
+/// 
+/// // Fuzzes either:
+/// // - DatumHash("KNOWN_DATA_HASH" |> DataHash)
+/// // - InlineDatum(Any Data)
+/// // - NoDatum
+/// datum_fuzzer(when_datum_hash: fuzz.constant("KNOWN_DATA_HASH"), when_inline_datum: data_fuzzer())
+/// 
+/// // Fuzzes either:
+/// // - DatumHash(Any DataHash)
+/// // - InlineDatum(Known Data)
+/// // - NoDatum
+/// datum_fuzzer(when_datum_hash: data_hash_fuzzer(), when_inline_datum: fuzz.constant(known_data))
+/// 
+/// // Fuzzes either:
+/// // - DatumHash(Known DataHash)
+/// // - InlineDatum(Known Data)
+/// // - NoDatum
+/// datum_fuzzer(when_datum_hash: fuzz.constant("KNOWN_DATA_HASH"), when_inline_datum: fuzz.constant(known_data))
+/// ```
+pub fn datum_fuzzer(
+  when_datum_hash: Fuzzer<DataHash>,
+  when_inline_datum: Fuzzer<Data>,
+) -> Fuzzer<transaction.Datum> {
   fuzz.either3(
-    datum.no_datum |> fuzz.constant,
     {
-      let data_hash <- fuzz.map(data_hash_fuzzer())
+      let data_hash <- fuzz.map(when_datum_hash)
       data_hash |> datum.to_datum_hash
     },
     {
-      let data <- fuzz.map(data_fuzzer())
+      let data <- fuzz.map(when_inline_datum)
       data |> datum.to_inline_datum
     },
+    datum.no_datum |> fuzz.constant,
   )
 }
 
@@ -750,7 +774,7 @@ pub fn script_output_fuzzer(
 /// - `utxo` `=`
 ///   ```aiken
 ///   transaction.Output {
-///     address: address.from_script(script_hash),
+///     address: from_script(script_hash),
 ///     value: 2 ADA and a Beacon NFT (policy_id: script_hash, asset_name, quantity: 1),
 ///     datum,
 ///     reference_script: None,
@@ -912,7 +936,7 @@ pub fn script_input_fuzzer(
 /// - `output` `=`
 ///   ```aiken
 ///   transaction.Output {
-///     address: address.from_script(script_hash),
+///     address: from_script(script_hash),
 ///     value: 2 ADA and a Beacon NFT (policy_id: script_hash, asset_name, quantity: 1),
 ///     datum,
 ///     reference_script: None,
@@ -949,7 +973,7 @@ pub fn authentic_script_input_fuzzer(
 /// - `output` `=`
 ///   ```aiken
 ///   transaction.Output {
-///     address: address.from_script(script_hash),
+///     address: from_script(script_hash),
 ///     value: 2 ADA and a Beacon NFT (policy_id: script_hash, asset_name, quantity: 1),
 ///     datum,
 ///     reference_script: None,
