@@ -592,6 +592,9 @@ pub fn voter_fuzzer(
 /// // - NoDatum
 /// datum_fuzzer(when_datum_hash: fuzz.constant("KNOWN_DATA_HASH"), when_inline_datum: fuzz.constant(known_data))
 /// ```
+/// See also:
+/// - [`data_hash_fuzzer`](#data_hash_fuzzer)
+/// - [`data_fuzzer`](#data_fuzzer)
 pub fn datum_fuzzer(
   when_datum_hash: Fuzzer<DataHash>,
   when_inline_datum: Fuzzer<Data>,
@@ -609,7 +612,7 @@ pub fn datum_fuzzer(
   )
 }
 
-/// Data Hash with 32 bytes fuzzer.
+/// Data Hash with 32 bytes fuzzer. Could be used as `DatumHash` fuzzer, see: [`datum_fuzzer`](#datum_fuzzer)
 pub fn data_hash_fuzzer() -> Fuzzer<DataHash> {
   fuzz.bytearray_fixed(32)
 }
@@ -623,6 +626,8 @@ pub fn data_hash_fuzzer() -> Fuzzer<DataHash> {
 /// | [`Byte`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#byte)           |      `0`-`255`      |    25% |
 /// | [`ByteArray`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#bytearray) | `"random 32 bytes"` |    25% |
 /// | [`Int`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#int)             |   `-255`-`16383`    |    25% |
+///
+/// Could be used as `InlineDatum` fuzzer, see: [`datum_fuzzer`](#datum_fuzzer)
 pub fn data_fuzzer() -> Fuzzer<Data> {
   fuzz.either4(
     {

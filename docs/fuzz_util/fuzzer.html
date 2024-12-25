@@ -1198,7 +1198,7 @@ and output index between 0 and 512.</p>
   when_inline_datum: Fuzzer&lt;Data&gt;,
 ) -&gt; Fuzzer&lt;transaction.Datum&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L595-L610"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L598-L613"></a>
           
         </div>
         <div class="rendered-markdown"><p>Fuzzes either <code>DatumHash</code>(<code>data_hash</code>) | <code>InlineDatum</code>(<code>data</code>) | <code>NoDatum</code></p>
@@ -1226,6 +1226,11 @@ datum_fuzzer(when_datum_hash: data_hash_fuzzer(), when_inline_datum: fuzz.consta
 // - NoDatum
 datum_fuzzer(when_datum_hash: fuzz.constant("KNOWN_DATA_HASH"), when_inline_datum: fuzz.constant(known_data))
 </code></pre>
+<p>See also:</p>
+<ul>
+<li><a href="#data_hash_fuzzer"><code>data_hash_fuzzer</code></a></li>
+<li><a href="#data_fuzzer"><code>data_fuzzer</code></a></li>
+</ul>
 </div>
       </div>
     
@@ -1235,10 +1240,10 @@ datum_fuzzer(when_datum_hash: fuzz.constant("KNOWN_DATA_HASH"), when_inline_datu
         <div class="member-name">
           <h2 id="data_hash_fuzzer"><pre class="hljs language-aiken">data_hash_fuzzer() -&gt; Fuzzer&lt;DataHash&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L613-L615"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L616-L618"></a>
           
         </div>
-        <div class="rendered-markdown"><p>Data Hash with 32 bytes fuzzer.</p>
+        <div class="rendered-markdown"><p>Data Hash with 32 bytes fuzzer. Could be used as <code>DatumHash</code> fuzzer, see: <a href="#datum_fuzzer"><code>datum_fuzzer</code></a></p>
 </div>
       </div>
     
@@ -1248,7 +1253,7 @@ datum_fuzzer(when_datum_hash: fuzz.constant("KNOWN_DATA_HASH"), when_inline_datu
         <div class="member-name">
           <h2 id="data_fuzzer"><pre class="hljs language-aiken">data_fuzzer() -&gt; Fuzzer&lt;Data&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L626-L649"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L631-L654"></a>
           
         </div>
         <div class="rendered-markdown"><p>Fuzzes either upcasted <code>Bool</code> | <code>Byte</code> | <code>ByteArray</code> | <code>Int</code></p>
@@ -1259,6 +1264,7 @@ datum_fuzzer(when_datum_hash: fuzz.constant("KNOWN_DATA_HASH"), when_inline_datu
 <tr><td><a href="https://aiken-lang.github.io/fuzz/aiken/fuzz.html#bytearray"><code>ByteArray</code></a></td><td><code>"random 32 bytes"</code></td><td>25%</td></tr>
 <tr><td><a href="https://aiken-lang.github.io/fuzz/aiken/fuzz.html#int"><code>Int</code></a></td><td><code>-255</code>-<code>16383</code></td><td>25%</td></tr>
 </tbody></table>
+<p>Could be used as <code>InlineDatum</code> fuzzer, see: <a href="#datum_fuzzer"><code>datum_fuzzer</code></a></p>
 </div>
       </div>
     
@@ -1274,7 +1280,7 @@ datum_fuzzer(when_datum_hash: fuzz.constant("KNOWN_DATA_HASH"), when_inline_datu
         <div class="member-name">
           <h2 id="output_reference_fuzzer"><pre class="hljs language-aiken">output_reference_fuzzer() -&gt; Fuzzer&lt;OutputReference&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L656-L663"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L661-L668"></a>
           
         </div>
         <div class="rendered-markdown"><p>Output Reference fuzzer,
@@ -1289,7 +1295,7 @@ and output index between 0 and 512.</p>
         <div class="member-name">
           <h2 id="transaction_id_fuzzer"><pre class="hljs language-aiken">transaction_id_fuzzer() -&gt; Fuzzer&lt;TransactionId&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L666-L668"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L671-L673"></a>
           
         </div>
         <div class="rendered-markdown"><p>Transaction ID with 32 bytes fuzzer.</p>
@@ -1308,7 +1314,7 @@ and output index between 0 and 512.</p>
         <div class="member-name">
           <h2 id="user_output_fuzzer"><pre class="hljs language-aiken">user_output_fuzzer() -&gt; Fuzzer&lt;transaction.Output&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L684-L695"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L689-L700"></a>
           
         </div>
         <div class="rendered-markdown"><p>Simple wallet UTxO fuzzer,
@@ -1330,7 +1336,7 @@ with a random number of tokens/NFTs.</p>
         <div class="member-name">
           <h2 id="user_outputs_fuzzer"><pre class="hljs language-aiken">user_outputs_fuzzer() -&gt; Fuzzer&lt;List&lt;transaction.Output&gt;&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L708-L710"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L713-L715"></a>
           
         </div>
         <div class="rendered-markdown"><p>Simple (non-script) outputs fuzzer.</p>
@@ -1354,7 +1360,7 @@ with a random number of tokens/NFTs.</p>
   datum: transaction.Datum,
 ) -&gt; Fuzzer&lt;transaction.Output&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L724-L735"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L729-L740"></a>
           
         </div>
         <div class="rendered-markdown"><p>Given a script hash and datum,
@@ -1378,7 +1384,7 @@ this fuzzer generates a UTxO at an address which its payment part is the same as
   datum: transaction.Datum,
 ) -&gt; Fuzzer&lt;(ScriptHash, transaction.Output)&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L755-L761"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L760-L766"></a>
           
         </div>
         <div class="rendered-markdown"><p>Returns a tuple where its first element is the random script hash (payment part of the UTxO’s address).
@@ -1410,7 +1416,7 @@ UTxO value is also random, with 2 ADA.</p>
   datum: transaction.Datum,
 ) -&gt; Fuzzer&lt;(ScriptHash, transaction.Output)&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L783-L803"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L788-L808"></a>
           
         </div>
         <div class="rendered-markdown"><p>UTxO fuzzer, where the value is composed of 2 ADA and a Beacon NFT,
@@ -1448,7 +1454,7 @@ This script hash is also returned.</p>
         <div class="member-name">
           <h2 id="user_input_fuzzer"><pre class="hljs language-aiken">user_input_fuzzer() -&gt; Fuzzer&lt;transaction.Input&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L825-L832"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L830-L837"></a>
           
         </div>
         <div class="rendered-markdown"><p>Simple wallet UTxO fuzzer,
@@ -1478,7 +1484,7 @@ with a random reference output and a random number of tokens/NFTs.</p>
         <div class="member-name">
           <h2 id="user_inputs_fuzzer"><pre class="hljs language-aiken">user_inputs_fuzzer() -&gt; Fuzzer&lt;List&lt;transaction.Input&gt;&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L851-L853"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L856-L858"></a>
           
         </div>
         <div class="rendered-markdown"><p>Simple (non-script) inputs fuzzer.</p>
@@ -1510,7 +1516,7 @@ with a random reference output and a random number of tokens/NFTs.</p>
   datum: transaction.Datum,
 ) -&gt; Fuzzer&lt;transaction.Input&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L873-L887"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L878-L892"></a>
           
         </div>
         <div class="rendered-markdown"><p>Similar to <a href="#specific_script_output_fuzzer"><code>specific_script_output_fuzzer</code></a>,
@@ -1542,7 +1548,7 @@ with an additional randomized wrapper for output reference.</p>
   datum: transaction.Datum,
 ) -&gt; Fuzzer&lt;(ScriptHash, transaction.Input)&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L912-L923"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L917-L928"></a>
           
         </div>
         <div class="rendered-markdown"><p>Similar to <a href="#script_output_fuzzer"><code>script_output_fuzzer</code></a>,
@@ -1579,7 +1585,7 @@ with an additional randomized wrapper for output reference.</p>
   datum: transaction.Datum,
 ) -&gt; Fuzzer&lt;(ScriptHash, transaction.Input)&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L949-L960"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L954-L965"></a>
           
         </div>
         <div class="rendered-markdown"><p>Similar to <a href="#script_output_fuzzer"><code>authentic_script_output_fuzzer</code></a>,
@@ -1617,7 +1623,7 @@ with and additional randomized wrapper for output reference.</p>
   datum: transaction.Datum,
 ) -&gt; Fuzzer&lt;(ScriptHash, transaction.Input, List&lt;transaction.Input&gt;)&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L998-L1019"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L1003-L1024"></a>
           
         </div>
         <div class="rendered-markdown"><p>Fuzzer for a sorted list of user/wallet inputs,
@@ -1674,7 +1680,7 @@ with the addition of one authentic script input.</p>
         <div class="member-name">
           <h2 id="tuple"><pre class="hljs language-aiken">tuple(a: Fuzzer&lt;a&gt;, b: Fuzzer&lt;b&gt;) -&gt; Fuzzer&lt;(a, b)&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L1030-L1033"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L1035-L1038"></a>
           
         </div>
         <div class="rendered-markdown"><p>A convenient way of generating tuples instead of doing <a href="https://aiken-lang.github.io/fuzz/aiken/fuzz.html#map2"><code>map2</code></a></p>
@@ -1692,7 +1698,7 @@ with the addition of one authentic script input.</p>
         <div class="member-name">
           <h2 id="tuple3"><pre class="hljs language-aiken">tuple3(a: Fuzzer&lt;a&gt;, b: Fuzzer&lt;b&gt;, c: Fuzzer&lt;c&gt;) -&gt; Fuzzer&lt;(a, b, c)&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L1042-L1045"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L1047-L1050"></a>
           
         </div>
         <div class="rendered-markdown"><p>A convenient way of generating tuple3 instead of doing <a href="https://aiken-lang.github.io/fuzz/aiken/fuzz.html#map3"><code>map3</code></a></p>
@@ -1715,7 +1721,7 @@ with the addition of one authentic script input.</p>
   d: Fuzzer&lt;d&gt;,
 ) -&gt; Fuzzer&lt;(a, b, c, d)&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L1054-L1062"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L1059-L1067"></a>
           
         </div>
         <div class="rendered-markdown"><p>A convenient way of generating tuple4 instead of doing <a href="https://aiken-lang.github.io/fuzz/aiken/fuzz.html#map4"><code>map4</code></a></p>
@@ -1739,7 +1745,7 @@ with the addition of one authentic script input.</p>
   e: Fuzzer&lt;e&gt;,
 ) -&gt; Fuzzer&lt;(a, b, c, d, e)&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L1071-L1080"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L1076-L1085"></a>
           
         </div>
         <div class="rendered-markdown"><p>A convenient way of generating tuple5 instead of doing <a href="https://aiken-lang.github.io/fuzz/aiken/fuzz.html#map5"><code>map5</code></a></p>
@@ -1764,7 +1770,7 @@ with the addition of one authentic script input.</p>
   f: Fuzzer&lt;f&gt;,
 ) -&gt; Fuzzer&lt;(a, b, c, d, e, f)&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L1089-L1099"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L1094-L1104"></a>
           
         </div>
         <div class="rendered-markdown"><p>A convenient way of generating tuple6 instead of doing <a href="https://aiken-lang.github.io/fuzz/aiken/fuzz.html#map6"><code>map6</code></a></p>
@@ -1790,7 +1796,7 @@ with the addition of one authentic script input.</p>
   g: Fuzzer&lt;g&gt;,
 ) -&gt; Fuzzer&lt;(a, b, c, d, e, f, g)&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L1108-L1119"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L1113-L1124"></a>
           
         </div>
         <div class="rendered-markdown"><p>A convenient way of generating tuple7 instead of doing <a href="https://aiken-lang.github.io/fuzz/aiken/fuzz.html#map7"><code>map7</code></a></p>
@@ -1817,7 +1823,7 @@ with the addition of one authentic script input.</p>
   h: Fuzzer&lt;h&gt;,
 ) -&gt; Fuzzer&lt;(a, b, c, d, e, f, g, h)&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L1128-L1140"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L1133-L1145"></a>
           
         </div>
         <div class="rendered-markdown"><p>A convenient way of generating tuple8 instead of doing <a href="https://aiken-lang.github.io/fuzz/aiken/fuzz.html#map8"><code>map8</code></a></p>
@@ -1845,7 +1851,7 @@ with the addition of one authentic script input.</p>
   i: Fuzzer&lt;i&gt;,
 ) -&gt; Fuzzer&lt;(a, b, c, d, e, f, g, h, i)&gt;</pre></h2>
           
-      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L1149-L1162"></a>
+      	    <a class="member-source" alt="view source" title="view source" target="_blank" href="https://github.com/aiken-extra/fuzz_util/blob/0.0.0/lib/fuzz_util/fuzzer.ak#L1154-L1167"></a>
           
         </div>
         <div class="rendered-markdown"><p>A convenient way of generating tuple9 instead of doing <a href="https://aiken-lang.github.io/fuzz/aiken/fuzz.html#map9"><code>map9</code></a></p>
@@ -1980,9 +1986,9 @@ with the addition of one authentic script input.</p>
     <script src="https://unpkg.com/@popperjs/core@2"></script>
     <script src="https://unpkg.com/tippy.js@6"></script>
     <script src="../js/lunr.min.js?v=1.1.9"></script>
-    <script src="../js/index.js?v=1735126922"></script>
+    <script src="../js/index.js?v=1735127695"></script>
     <!-- Load the search index using JSONP to avoid CORS issues -->
-    <script src="../search-data.js?v=1735126922"></script>
+    <script src="../search-data.js?v=1735127695"></script>
     <script>
       void function() {
         if (typeof tippy !== "undefined") {
