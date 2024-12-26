@@ -3,7 +3,7 @@ version = "0.0.0"
 compiler = "v1.1.9"
 plutus = "v3"
 license = "Apache-2.0"
-description = "Aiken contracts for project 'aiken-extra/fuzz_util'"
+description = "An Aiken utility library containing various fuzzers"
 
 [repository]
 user = "aiken-extra"

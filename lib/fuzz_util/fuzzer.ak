@@ -1,9 +1,10 @@
 //// Copied from [Anastasia-Labs/aiken-design-patterns](https://github.com/Anastasia-Labs/aiken-design-patterns/blob/main/lib/aiken-design-patterns/utils.ak)
 //// with a few additions that might be useful.
 
+use aiken/cbor
 use aiken/collection
 use aiken/collection/list
-use aiken/crypto.{Blake2b_224, DataHash, Hash, ScriptHash, VerificationKeyHash}
+use aiken/crypto.{Blake2b_224, DataHash, ScriptHash, VerificationKeyHash}
 use aiken/fuzz
 use aiken/stdlib/cardano/address/credential
 use aiken/stdlib/cardano/certificate/d_rep
@@ -21,7 +22,7 @@ use cardano/transaction/output_reference
 
 /// Alias: [`StakePoolHash`](#StakePoolHash)
 pub type CredentialHash {
-  Specified(Hash<Blake2b_224, ByteArray>)
+  Specified(crypto.Hash<Blake2b_224, ByteArray>)
   Fuzzed
 }
 
@@ -580,30 +581,30 @@ pub fn voter_fuzzer(
 /// // - DatumHash(Known DataHash)
 /// // - InlineDatum(Any Data)
 /// // - NoDatum
-/// datum_fuzzer(when_datum_hash: fuzz.constant("KNOWN_DATA_HASH"), when_inline_datum: data_fuzzer())
+/// datum_fuzzer(when_datum_hash: (known_data, "KNOWN_DATA_HASH") |> fuzz.constant, when_inline_datum: data_fuzzer())
 /// 
 /// // Fuzzes either:
 /// // - DatumHash(Any DataHash)
 /// // - InlineDatum(Known Data)
 /// // - NoDatum
-/// datum_fuzzer(when_datum_hash: data_hash_fuzzer(), when_inline_datum: fuzz.constant(known_data))
+/// datum_fuzzer(when_datum_hash: data_hash_fuzzer(), when_inline_datum: known_data |> fuzz.constant)
 /// 
 /// // Fuzzes either:
 /// // - DatumHash(Known DataHash)
 /// // - InlineDatum(Known Data)
 /// // - NoDatum
-/// datum_fuzzer(when_datum_hash: fuzz.constant("KNOWN_DATA_HASH"), when_inline_datum: fuzz.constant(known_data))
+/// datum_fuzzer(when_datum_hash: (known_data, "KNOWN_DATA_HASH") |> fuzz.constant, when_inline_datum: known_data |> fuzz.constant)
 /// ```
 /// See also:
 /// - [`data_hash_fuzzer`](#data_hash_fuzzer)`()`
 /// - [`data_fuzzer`](#data_fuzzer)`()`
 pub fn datum_fuzzer(
-  when_datum_hash: Fuzzer<DataHash>,
+  when_datum_hash: Fuzzer<(Data, DataHash)>,
   when_inline_datum: Fuzzer<Data>,
 ) -> Fuzzer<transaction.Datum> {
   fuzz.either3(
     {
-      let data_hash <- fuzz.map(when_datum_hash)
+      let (_, data_hash) <- fuzz.map(when_datum_hash)
       data_hash |> datum.to_datum_hash
     },
     {
@@ -614,9 +615,17 @@ pub fn datum_fuzzer(
   )
 }
 
-/// Data Hash with 32 bytes fuzzer. Could be used as `DatumHash` fuzzer, see: [`datum_fuzzer`](#datum_fuzzer)
-pub fn data_hash_fuzzer() -> Fuzzer<DataHash> {
-  fuzz.bytearray_fixed(32)
+/// Data Hash with Blake2b-256 hash digest (32 bytes) of some `data` fuzzer.
+///
+/// Where,
+/// - `data` `<-` [`data_fuzzer`](#data_fuzzer)`()`
+///
+/// Could be used as `DatumHash` fuzzer, see: [`datum_fuzzer`](#datum_fuzzer)
+pub fn data_hash_fuzzer() -> Fuzzer<(Data, DataHash)> {
+  let data <- fuzz.map(data_fuzzer())
+  let data_hash = data |> cbor.serialise |> crypto.blake2b_256
+
+  (data, data_hash)
 }
 
 /// Fuzzes either upcasted `Bool` | `Byte` | `ByteArray` | `Int`

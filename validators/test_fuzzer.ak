@@ -1085,12 +1085,12 @@ test testing_datum_fuzzer_distribution(
 fn test_specified_data_hash_datum_when_datum_hash_fuzzer() -> Fuzzer<
   (DataHash, transaction.Datum),
 > {
-  let data_hash <- fuzz.and_then(data_hash_fuzzer())
+  let (data, data_hash) <- fuzz.and_then(data_hash_fuzzer())
 
   let datum <-
     fuzz.map(
       datum_fuzzer(
-        when_datum_hash: data_hash |> fuzz.constant,
+        when_datum_hash: (data, data_hash) |> fuzz.constant,
         when_inline_datum: data_fuzzer(),
       ),
     )
@@ -1133,13 +1133,12 @@ test testing_specified_data_datum_when_inline_datum_fuzzer(
 fn test_specified_both_data_datum_when_inline_or_hash_fuzzer() -> Fuzzer<
   (DataHash, Data, transaction.Datum),
 > {
-  let data_hash <- fuzz.and_then(data_hash_fuzzer())
-  let data <- fuzz.and_then(data_fuzzer())
+  let (data, data_hash) <- fuzz.and_then(data_hash_fuzzer())
 
   let datum <-
     fuzz.map(
       datum_fuzzer(
-        when_datum_hash: data_hash |> fuzz.constant,
+        when_datum_hash: (data, data_hash) |> fuzz.constant,
         when_inline_datum: data |> fuzz.constant,
       ),
     )
