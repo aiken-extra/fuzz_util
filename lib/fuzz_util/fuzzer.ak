@@ -929,7 +929,7 @@ pub fn script_input_fuzzer(
   (script_hash, script_input)
 }
 
-/// Similar to [`authentic_script_output_fuzzer`](#script_output_fuzzer),
+/// Similar to [`authentic_script_output_fuzzer`](#authentic_script_output_fuzzer),
 /// with and additional randomized wrapper for output reference.
 ///
 /// Fuzzes the following tuple:

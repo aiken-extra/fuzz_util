@@ -5,6 +5,7 @@ use aiken/collection/list
 use aiken/crypto.{DataHash, ScriptHash, VerificationKeyHash}
 use aiken/fuzz
 use aiken/primitive/bytearray
+use aiken/primitive/string
 use cardano/address.{Address, VerificationKey}
 use cardano/assets
 use cardano/certificate.{
@@ -26,6 +27,16 @@ use fuzz_util/fuzzer.{
   tuple8, tuple9, user_input_fuzzer, user_inputs_fuzzer, user_output_fuzzer,
   user_outputs_fuzzer, value_fuzzer, verification_key_hash_fuzzer,
 }
+
+pub fn print(label: ByteArray, data: Data) {
+  [label |> bytearray.to_string, data |> cbor.diagnostic]
+    |> string.join(@": ")
+    |> fuzz.label
+}
+
+// test printing() {
+//   print("Debug", #"deb009")
+// }
 
 // ## Address Fuzzers
 
@@ -89,7 +100,7 @@ fn test_specified_script_address_with_fuzzed_delegation_script_fuzzer() -> Fuzze
 test testing_specified_script_address_with_fuzzed_delegation_script_fuzzer(
   (payment_script_hash, address) via test_specified_script_address_with_fuzzed_delegation_script_fuzzer(),
 ) {
-  //   address.stake_credential |> cbor.diagnostic |> fuzz.label
+  //   print("stake_credential", address.stake_credential)
   address.payment_credential == address.Script(payment_script_hash)
 }
 
@@ -134,7 +145,7 @@ fn test_specified_script_address_with_fuzzed_delegation_key_fuzzer() -> Fuzzer<
 test testing_specified_script_address_with_fuzzed_delegation_key_fuzzer(
   (payment_script_hash, address) via test_specified_script_address_with_fuzzed_delegation_key_fuzzer(),
 ) {
-  //   address.stake_credential |> cbor.diagnostic |> fuzz.label
+  //   print("stake_credential", address.stake_credential)
   address.payment_credential == address.Script(payment_script_hash)
 }
 
@@ -263,7 +274,7 @@ fn test_specified_key_address_with_fuzzed_delegation_script_fuzzer() -> Fuzzer<
 test testing_specified_key_address_with_fuzzed_delegation_script_fuzzer(
   (payment_key_hash, address) via test_specified_key_address_with_fuzzed_delegation_script_fuzzer(),
 ) {
-  //   address.stake_credential |> cbor.diagnostic |> fuzz.label
+  //   print("stake_credential", address.stake_credential)
   address.payment_credential == VerificationKey(payment_key_hash)
 }
 
@@ -308,7 +319,7 @@ fn test_specified_key_address_with_fuzzed_delegation_key_fuzzer() -> Fuzzer<
 test testing_specified_key_address_with_fuzzed_delegation_key_fuzzer(
   (payment_key_hash, address) via test_specified_key_address_with_fuzzed_delegation_key_fuzzer(),
 ) {
-  //   address.stake_credential |> cbor.diagnostic |> fuzz.label
+  //   print("stake_credential", address.stake_credential)
   address.payment_credential == VerificationKey(payment_key_hash)
 }
 
@@ -385,7 +396,7 @@ test testing_fuzzed_script_address_with_no_delegation_fuzzer(
   ),
 ) {
   expect address.Script(_payment_script_hash) = payment_credential
-  //   payment_script_hash |> cbor.diagnostic |> fuzz.label
+  //   print("payment_script_hash", payment_script_hash)
   stake_credential == None
 }
 
@@ -407,7 +418,7 @@ test testing_fuzzed_script_address_with_specified_delegation_script_fuzzer(
   (stake_script_hash, Address { payment_credential, stake_credential }) via test_fuzzed_script_address_with_specified_delegation_script_fuzzer(),
 ) {
   expect address.Script(_payment_script_hash) = payment_credential
-  //   payment_script_hash |> cbor.diagnostic |> fuzz.label
+  //   print("payment_script_hash", payment_script_hash)
   stake_credential == (
     stake_script_hash |> address.Script |> address.Inline |> Some
   )
@@ -422,7 +433,7 @@ test testing_fuzzed_script_address_with_fuzzed_delegation_script_fuzzer(
   expect address.Script(_payment_script_hash) = payment_credential
   expect Some(address.Inline(address.Script(_stake_script_hash))) =
     stake_credential
-  //   (payment_script_hash, stake_script_hash) |> cbor.diagnostic |> fuzz.label
+  //   print("Address", (payment_script_hash, stake_script_hash))
 }
 
 fn test_fuzzed_script_address_with_specified_delegation_key_fuzzer() -> Fuzzer<
@@ -443,7 +454,7 @@ test testing_fuzzed_script_address_with_specified_delegation_key_fuzzer(
   (stake_key_hash, Address { payment_credential, stake_credential }) via test_fuzzed_script_address_with_specified_delegation_key_fuzzer(),
 ) {
   expect address.Script(_payment_key_hash) = payment_credential
-  //   payment_key_hash |> cbor.diagnostic |> fuzz.label
+  //   print("payment_key_hash", payment_key_hash)
   stake_credential == (
     stake_key_hash |> VerificationKey |> address.Inline |> Some
   )
@@ -458,7 +469,7 @@ test testing_fuzzed_script_address_with_fuzzed_delegation_key_fuzzer(
   expect address.Script(_payment_key_hash) = payment_credential
   expect Some(address.Inline(VerificationKey(_stake_key_hash))) =
     stake_credential
-  //   (payment_key_hash, stake_key_hash) |> cbor.diagnostic |> fuzz.label
+  //   print("Address", (payment_key_hash, stake_key_hash))
 }
 
 test testing_fuzzed_script_address_with_the_same_delegation_script_fuzzer(
@@ -470,7 +481,7 @@ test testing_fuzzed_script_address_with_the_same_delegation_script_fuzzer(
   expect address.Script(_payment_script_hash) = payment_credential
   expect Some(address.Inline(address.Script(_stake_script_hash))) =
     stake_credential
-  //   (payment_script_hash, stake_script_hash) |> cbor.diagnostic |> fuzz.label
+  //   print("Address", (payment_script_hash, stake_script_hash))
 }
 
 test testing_fuzzed_script_address_with_fuzzed_delegation_fuzzer_distribution(
@@ -515,7 +526,7 @@ test testing_fuzzed_key_address_with_no_delegation_fuzzer(
   ),
 ) {
   expect VerificationKey(_payment_key_hash) = payment_credential
-  //   payment_key_hash |> cbor.diagnostic |> fuzz.label
+  //   print("payment_key_hash", payment_key_hash)
   stake_credential == None
 }
 
@@ -537,7 +548,7 @@ test testing_fuzzed_key_address_with_specified_delegation_script_fuzzer(
   (stake_script_hash, Address { payment_credential, stake_credential }) via test_fuzzed_key_address_with_specified_delegation_script_fuzzer(),
 ) {
   expect VerificationKey(_payment_key_hash) = payment_credential
-  //   payment_key_hash |> cbor.diagnostic |> fuzz.label
+  //   print("payment_key_hash", payment_key_hash)
   stake_credential == (
     stake_script_hash |> address.Script |> address.Inline |> Some
   )
@@ -552,7 +563,7 @@ test testing_fuzzed_key_address_with_fuzzed_delegation_script_fuzzer(
   expect VerificationKey(_payment_key_hash) = payment_credential
   expect Some(address.Inline(address.Script(_stake_script_hash))) =
     stake_credential
-  //   (payment_key_hash, stake_script_hash) |> cbor.diagnostic |> fuzz.label
+  //   print("Address", (payment_key_hash, stake_script_hash))
 }
 
 fn test_fuzzed_key_address_with_specified_delegation_key_fuzzer() -> Fuzzer<
@@ -573,7 +584,7 @@ test testing_fuzzed_key_address_with_specified_delegation_key_fuzzer(
   (stake_key_hash, Address { payment_credential, stake_credential }) via test_fuzzed_key_address_with_specified_delegation_key_fuzzer(),
 ) {
   expect VerificationKey(_payment_key_hash) = payment_credential
-  //   payment_key_hash |> cbor.diagnostic |> fuzz.label
+  //   print("payment_key_hash", payment_key_hash)
   stake_credential == (
     stake_key_hash |> VerificationKey |> address.Inline |> Some
   )
@@ -588,7 +599,7 @@ test testing_fuzzed_key_address_with_fuzzed_delegation_key_fuzzer(
   expect VerificationKey(_payment_key_hash) = payment_credential
   expect Some(address.Inline(VerificationKey(_stake_key_hash))) =
     stake_credential
-  //   (payment_key_hash, stake_key_hash) |> cbor.diagnostic |> fuzz.label
+  //   print("Address", (payment_key_hash, stake_key_hash))
 }
 
 test testing_fuzzed_key_address_with_the_same_delegation_key_fuzzer(
@@ -600,7 +611,7 @@ test testing_fuzzed_key_address_with_the_same_delegation_key_fuzzer(
   expect VerificationKey(_payment_key_hash) = payment_credential
   expect Some(address.Inline(VerificationKey(_stake_key_hash))) =
     stake_credential
-  //   (payment_key_hash, stake_key_hash) |> cbor.diagnostic |> fuzz.label
+  //   print("Address", (payment_key_hash, stake_key_hash))
 }
 
 test testing_fuzzed_key_address_with_fuzzed_delegation_fuzzer_distribution(
@@ -842,7 +853,7 @@ test testing_fuzzed_script_credential_fuzzer(
   credential via credential_fuzzer(FromScript(Fuzzed)),
 ) {
   expect address.Script(_script_hash) = credential
-  //   script_hash |> cbor.diagnostic |> fuzz.label
+  //   print("script_hash", script_hash)
 }
 
 fn test_specified_key_credential_fuzzer() -> Fuzzer<
@@ -865,7 +876,7 @@ test testing_fuzzed_key_credential_fuzzer(
   credential via credential_fuzzer(FromKey(Fuzzed)),
 ) {
   expect VerificationKey(_verification_key_hash) = credential
-  //   verification_key_hash |> cbor.diagnostic |> fuzz.label
+  //   print("verification_key_hash", verification_key_hash)
 }
 
 test testing_fuzzed_credential_fuzzer_distribution(
@@ -883,7 +894,7 @@ test testing_fuzzed_credential_fuzzer_distribution(
 
 pub fn trace_value(value: assets.Value) {
   let flatten_value <- list.for_each(value |> assets.flatten)
-  flatten_value |> cbor.diagnostic |> fuzz.label
+  print("Value", flatten_value)
 }
 
 test testing_value_fuzzer(
@@ -1061,7 +1072,7 @@ test testing_datum_fuzzer_distribution(
     when_inline_datum: data_fuzzer(),
   ),
 ) {
-  //   datum |> cbor.diagnostic |> fuzz.label
+  //   print("datum", datum)
   fuzz.label(
     when datum is {
       DatumHash(_data_hash) -> @"DatumHash"
@@ -1157,7 +1168,7 @@ fn test_output_reference(
 }
 
 test testing_output_reference_fuzzer(o_ref via output_reference_fuzzer()) {
-  //   o_ref |> cbor.diagnostic |> fuzz.label
+  //   print("OutputReference", o_ref)
   o_ref |> test_output_reference
 }
 
@@ -1305,7 +1316,7 @@ fn test_user_input(in: transaction.Input) -> Bool {
 }
 
 test testing_user_input_fuzzer(in via user_input_fuzzer()) {
-  //   in |> cbor.diagnostic |> fuzz.label
+  //   print("Transaction.input", in)
   in |> test_user_input
 }
 
