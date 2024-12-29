@@ -2,7 +2,9 @@
 
 use aiken/cbor
 use aiken/collection/list
-use aiken/crypto.{DataHash, ScriptHash, VerificationKeyHash}
+use aiken/crypto.{
+  Blake2b_224, Blake2b_256, DataHash, ScriptHash, VerificationKeyHash,
+}
 use aiken/fuzz
 use aiken/primitive/bytearray
 use aiken/primitive/string
@@ -18,10 +20,10 @@ use fuzz_util/fuzzer.{
   WithDelegationKey, WithDelegationScript, WithFuzzedDelegation,
   WithNoDelegation, WithTheSameDelegationScriptOrKey, address_fuzzer,
   authentic_script_input_fuzzer, authentic_script_output_fuzzer,
-  credential_fuzzer, data_fuzzer, data_hash_fuzzer, datum_fuzzer,
-  delegate_fuzzer, delegate_representative_fuzzer,
-  inputs_with_an_authentic_script_input_fuzzer, mint_fuzzer,
-  output_reference_fuzzer, script_hash_fuzzer, script_input_fuzzer,
+  blake2b_224_fuzzer, blake2b_256_fuzzer, credential_fuzzer, data_fuzzer,
+  data_hash_fuzzer, datum_fuzzer, delegate_fuzzer,
+  delegate_representative_fuzzer, inputs_with_an_authentic_script_input_fuzzer,
+  mint_fuzzer, output_reference_fuzzer, script_hash_fuzzer, script_input_fuzzer,
   script_output_fuzzer, specific_script_input_fuzzer,
   specific_script_output_fuzzer, tuple, tuple3, tuple4, tuple5, tuple6, tuple7,
   tuple8, tuple9, user_input_fuzzer, user_inputs_fuzzer, user_output_fuzzer,
@@ -1153,6 +1155,42 @@ test testing_specified_both_data_datum_when_inline_or_hash_fuzzer(
     InlineDatum(inline) -> inline == inline_data
     _ -> True
   }
+}
+
+fn test_blake2b_224_fuzzer() -> Fuzzer<
+  (Int, List<crypto.Hash<Blake2b_224, ByteArray>>),
+> {
+  let count <- fuzz.and_then(fuzz.int_between(1, 10))
+
+  let blake2b_224s <- fuzz.map(blake2b_224_fuzzer(count))
+  (count, blake2b_224s)
+}
+
+test testing_blake2b_224_fuzzer(
+  (count, blake2b_224s) via test_blake2b_224_fuzzer(),
+) {
+  //   expect [blake2b_224, ..] = blake2b_224s
+  //   "Blake2b-224" |> print(blake2b_224)
+
+  ( blake2b_224s |> list.unique |> list.length ) == count
+}
+
+fn test_blake2b_256_fuzzer() -> Fuzzer<
+  (Int, List<crypto.Hash<Blake2b_256, ByteArray>>),
+> {
+  let count <- fuzz.and_then(fuzz.int_between(1, 10))
+
+  let blake2b_256s <- fuzz.map(blake2b_256_fuzzer(count))
+  (count, blake2b_256s)
+}
+
+test testing_blake2b_256_fuzzer(
+  (count, blake2b_256s) via test_blake2b_256_fuzzer(),
+) {
+  //   expect [blake2b_256, ..] = blake2b_256s
+  //   "Blake2b-256" |> print(blake2b_256)
+
+  ( blake2b_256s |> list.unique |> list.length ) == count
 }
 
 // ### Output Reference Fuzzer

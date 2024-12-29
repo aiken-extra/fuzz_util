@@ -4,7 +4,9 @@
 use aiken/cbor
 use aiken/collection
 use aiken/collection/list
-use aiken/crypto.{Blake2b_224, DataHash, ScriptHash, VerificationKeyHash}
+use aiken/crypto.{
+  Blake2b_224, Blake2b_256, DataHash, ScriptHash, VerificationKeyHash,
+}
 use aiken/fuzz
 use aiken/stdlib/cardano/address/credential
 use aiken/stdlib/cardano/certificate/d_rep
@@ -330,8 +332,7 @@ pub fn value_fuzzer(min_lovelaces: assets.Lovelace) -> Fuzzer<assets.Value> {
 /// - `token_name` `<-` [`asset_name_fuzzer`](#asset_name_fuzzer)`()`
 /// - `quantity` `<-` [`fuzz.int_at_least`](https://aiken-lang.github.io/fuzz/aiken/fuzz.html#int_at_least)`(1)`
 pub fn single_asset_value_fuzzer() -> Fuzzer<assets.Value> {
-  let policy_id <- fuzz.and_then(policy_id_fuzzer())
-  policy_id |> single_specific_asset_value_fuzzer
+  policy_id_fuzzer() |> fuzz.and_then(single_specific_asset_value_fuzzer)
 }
 
 /// A fuzzer for [`Value`](https://aiken-lang.github.io/stdlib/cardano/assets.html#Value) with a single asset.
@@ -464,11 +465,15 @@ pub fn delegate_fuzzer(
     }
   let fuzz_both =
     fn((block_production_stake_pool, vote_delegate_representative)) {
-      expect DelegateBlockProduction(stake_pool) <-
-        fuzz.and_then(fuzz_block_production(block_production_stake_pool))
-      expect DelegateVote(delegate_representative) <-
-        fuzz.and_then(fuzz_vote(vote_delegate_representative))
-      DelegateBoth(stake_pool, delegate_representative) |> fuzz.constant
+      expect
+        DelegateBlockProduction(stake_pool),
+        DelegateVote(delegate_representative),
+      <-
+        fuzz.map2(
+          fuzz_block_production(block_production_stake_pool),
+          fuzz_vote(vote_delegate_representative),
+        )
+      DelegateBoth(stake_pool, delegate_representative)
     }
 
   fuzz.either3(
@@ -664,6 +669,20 @@ pub fn data_fuzzer() -> Fuzzer<Data> {
   )
 }
 
+/// Blake2b-224 fuzzer with `n` unique count.
+pub fn blake2b_224_fuzzer(
+  count n: Int,
+) -> Fuzzer<List<crypto.Hash<Blake2b_224, ByteArray>>> {
+  28 |> fuzz.bytearray_fixed |> fuzz.set_between(n, n)
+}
+
+/// Blake2b-256 fuzzer with `n` unique count.
+pub fn blake2b_256_fuzzer(
+  count n: Int,
+) -> Fuzzer<List<crypto.Hash<Blake2b_256, ByteArray>>> {
+  32 |> fuzz.bytearray_fixed |> fuzz.set_between(n, n)
+}
+
 // ### Output Reference Fuzzers
 
 /// Output Reference fuzzer,
@@ -706,7 +725,6 @@ pub fn user_output_fuzzer() -> Fuzzer<transaction.Output> {
       address_fuzzer(Fuzzed |> FromKey, Fuzzed |> WithDelegationKey),
       value_fuzzer(2_000_000),
     )
-
   transaction.Output(address, value, datum.no_datum, None)
 }
 
@@ -898,7 +916,6 @@ pub fn specific_script_input_fuzzer(
       output_reference_fuzzer(),
       specific_script_output_fuzzer(script_hash, datum),
     )
-
   transaction.Input(output_reference, output)
 }
 
