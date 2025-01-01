@@ -1,5 +1,5 @@
 name = "aiken-extra/fuzz_util"
-version = "0.0.0"
+version = "1.230.202501"
 compiler = "v1.1.9"
 plutus = "v3"
 license = "Apache-2.0"
